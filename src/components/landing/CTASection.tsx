@@ -86,14 +86,20 @@ export function CTASection() {
             <h2 className="text-h1 font-bold text-white mb-4">
               Get early access to Wayfinder
             </h2>
-            <p className="text-xl text-brand-50 max-w-2xl mb-6">
-              Join the waitlist for the fully managed Wayfinder service. We will
-              share launch updates, hosted endpoint access, and API reference previews.
-            </p>
-            <div className="flex items-center gap-2 text-brand-50 text-sm">
-              <span className="inline-flex h-2 w-2 rounded-full bg-white/70" />
-              No spam. We only email you about launch and access updates.
-            </div>
+          <p className="text-xl text-brand-50 max-w-2xl mb-6">
+            Join the waitlist for the fully managed Wayfinder service. We will
+            share launch updates, hosted endpoint access, and API reference previews.
+          </p>
+          <p className="text-sm text-brand-50">
+            Questions?{' '}
+            <a className="underline underline-offset-4" href="mailto:info@wyfndr.ai">
+              info@wyfndr.ai
+            </a>
+          </p>
+          <div className="flex items-center gap-2 text-brand-50 text-sm">
+            <span className="inline-flex h-2 w-2 rounded-full bg-white/70" />
+            No spam. We only email you about launch and access updates.
+          </div>
           </div>
 
           <form

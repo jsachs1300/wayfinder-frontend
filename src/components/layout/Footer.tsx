@@ -18,6 +18,12 @@ export function Footer() {
                 Intelligent LLM routing control plane that optimizes model
                 selection based on policy constraints and learned patterns.
               </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-4">
+                Contact:{' '}
+                <a className="hover:text-brand-600 dark:hover:text-brand-400" href="mailto:info@wyfndr.ai">
+                  info@wyfndr.ai
+                </a>
+              </p>
             </div>
 
             <div>
