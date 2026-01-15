@@ -6,6 +6,7 @@ import { Moon, Sun, Compass } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export function Header() {
   const { theme, setTheme } = useTheme()
@@ -39,30 +40,30 @@ export function Header() {
           </div>
 
           <nav className="flex items-center gap-6">
-            <a
+            <Link
               href="/#features"
               className="text-sm font-medium text-gray-700 transition-colors hover:text-brand-600 dark:text-gray-300 dark:hover:text-brand-400"
             >
               Features
-            </a>
-            <a
+            </Link>
+            <Link
               href="/#use-cases"
               className="text-sm font-medium text-gray-700 transition-colors hover:text-brand-600 dark:text-gray-300 dark:hover:text-brand-400"
             >
               Use Cases
-            </a>
-            <a
+            </Link>
+            <Link
               href="/#how-it-works"
               className="text-sm font-medium text-gray-700 transition-colors hover:text-brand-600 dark:text-gray-300 dark:hover:text-brand-400"
             >
               How it works
-            </a>
-            <a
+            </Link>
+            <Link
               href="/api-reference"
               className="text-sm font-medium text-gray-500 transition-colors hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
             >
               API Reference
-            </a>
+            </Link>
             <Button variant="primary" size="sm" onClick={() => scrollToId('signup')}>
               Notify me
             </Button>

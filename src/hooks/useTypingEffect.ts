@@ -56,7 +56,7 @@ export function useTypingEffect({
         cancelAnimationFrame(frameRef.current)
       }
     }
-  }, [text, speed, onComplete])
+  }, [text, speed, onComplete, isComplete])
 
   return { displayText, isComplete }
 }
