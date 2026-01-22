@@ -63,6 +63,7 @@ type CreateTokenResponse = {
   name?: string | null
   config?: {
     eligible_models?: string[]
+    allowed_models?: string[]
   }
 }
 
@@ -275,7 +276,7 @@ export function UserAccessConsole() {
     setTokenMessage('')
 
     try {
-      const response = await fetch('/api/tokens/tokens', {
+      const response = await fetch('/api/tokens', {
         headers: { 'X-Wayfinder-Token': authToken },
       })
 
@@ -314,7 +315,7 @@ export function UserAccessConsole() {
     setTokenMessage('')
 
     try {
-      const response = await fetch(`/api/tokens/tokens/${token.id}`, {
+      const response = await fetch(`/api/tokens/${token.id}`, {
         method: 'DELETE',
         headers: { 'X-Wayfinder-Token': authToken },
       })
@@ -371,7 +372,7 @@ export function UserAccessConsole() {
     }
 
     if (eligibleModels.length === 0) {
-      setCreateMessage('Add at least one eligible model.')
+      setCreateMessage('Add at least one allowed model.')
       return
     }
 
@@ -380,14 +381,14 @@ export function UserAccessConsole() {
     setNewTokenModels([])
 
     try {
-      const response = await fetch('/api/tokens/tokens', {
+      const response = await fetch('/api/tokens', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Wayfinder-Token': authToken,
         },
         body: JSON.stringify({
-          eligible_models: eligibleModels,
+          allowed_models: eligibleModels,
           name: tokenName.trim() || undefined,
         }),
       })
@@ -400,7 +401,7 @@ export function UserAccessConsole() {
       }
 
       setNewTokenSecret(data.token)
-      setNewTokenModels(data.config?.eligible_models || eligibleModels)
+      setNewTokenModels(data.config?.allowed_models || data.config?.eligible_models || eligibleModels)
       setTokens((prev) => [
         ...prev,
         {
@@ -478,7 +479,7 @@ export function UserAccessConsole() {
                     </li>
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-300" />
-                      Eligible model lists cannot be edited after token creation.
+                      Allowed model lists cannot be edited after token creation.
                     </li>
                   </ul>
                 </div>
@@ -727,268 +728,283 @@ export function UserAccessConsole() {
               )}
             </div>
 
-            <div
-              ref={dashboardRef}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-gray-800 dark:bg-gray-900"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
-                    Token Dashboard
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-                    Manage token inventory
-                  </h2>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="gap-2"
-                  onClick={refreshTokens}
-                  disabled={tokenStatus === 'loading'}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh tokens
-                </Button>
-              </div>
-
-              {!authToken && (
-                <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
-                  <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-gray-200">
-                    <ShieldX className="h-4 w-4" />
-                    To manage tokens, paste an existing token secret.
-                  </p>
-                  <div className="mt-3 flex flex-col gap-3">
-                    <input
-                      type="password"
-                      value={authTokenInput}
-                      onChange={(event) => setAuthTokenInput(event.target.value)}
-                      placeholder="wf_..."
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button type="button" onClick={saveAuthToken}>
-                        Save token
-                      </Button>
-                      {tokenMessage && (
-                        <span className="text-xs text-red-500">{tokenMessage}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {authToken && (
-                <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="flex items-center gap-2 font-semibold">
-                        <ShieldCheck className="h-4 w-4" />
-                        Token secret stored for this session only
-                      </p>
-                      <p className="mt-1 text-xs text-emerald-700">
-                        It stays in memory only. Reloading will clear it.
-                      </p>
-                    </div>
-                    <Button type="button" variant="secondary" onClick={clearAuthToken}>
-                      Forget token
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-8">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Token list</h3>
-                  <span className="text-xs text-slate-500 dark:text-gray-400">
-                    {tokens.length} tokens
-                  </span>
-                </div>
-
-                {tokens.length === 0 ? (
-                  <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
-                    No tokens yet. Create one to access the API.
-                  </div>
-                ) : (
-                  <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white text-sm dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900">
-                    {tokens.map((token) => (
-                      <div
-                        key={token.id}
-                        className="grid gap-4 px-4 py-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.7fr_auto] md:items-center"
-                      >
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white">
-                            {token.name || 'Untitled token'}
-                          </p>
-                          <p className="text-xs text-slate-500">{token.id}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-slate-400">Created</p>
-                          <p className="text-gray-700 dark:text-gray-300">{formatDate(token.created_at)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase text-slate-400">Updated</p>
-                          <p className="text-gray-700 dark:text-gray-300">{formatDate(token.updated_at)}</p>
-                        </div>
-                        <div>
-                          {token.is_primary ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700">
-                              <Lock className="h-3 w-3" />
-                              Primary
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-gray-800 dark:text-gray-300">
-                              Standard
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-end">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="gap-2 text-red-600 hover:text-red-700"
-                            onClick={() => deleteToken(token)}
-                            disabled={token.is_primary || tokenStatus === 'loading'}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {tokenMessage && (
-                  <p className="mt-3 text-xs text-red-500" aria-live="polite">
-                    {tokenMessage}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-10">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Create token</h3>
-                  <span className="text-xs text-slate-500 dark:text-gray-400">
-                    Immutable configuration
-                  </span>
-                </div>
-
-                <form onSubmit={handleCreateToken} className="mt-4 space-y-4">
+            {userProfile ? (
+              <div
+                ref={dashboardRef}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="token-name">
-                      Token name (optional)
-                    </label>
-                    <input
-                      id="token-name"
-                      type="text"
-                      value={tokenName}
-                      onChange={(event) => setTokenName(event.target.value)}
-                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                      placeholder="Production access"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                      Eligible models
-                    </label>
-                    <div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200 dark:border-gray-700 dark:bg-gray-950">
-                      {eligibleModels.map((model) => (
-                        <span
-                          key={model}
-                          className="flex items-center gap-1 rounded-full bg-brand-100 px-2 py-1 text-xs font-semibold text-brand-700"
-                        >
-                          {model}
-                          <button
-                            type="button"
-                            onClick={() => removeModel(model)}
-                            className="text-brand-700 hover:text-brand-900"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                      <input
-                        type="text"
-                        value={modelInput}
-                        onChange={(event) => setModelInput(event.target.value)}
-                        onKeyDown={handleModelKeyDown}
-                        onBlur={handleModelBlur}
-                        placeholder="gpt-4o-mini"
-                        className="min-w-[140px] flex-1 bg-transparent text-gray-900 outline-none dark:text-white"
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
-                      Press Enter or comma to add multiple models. This list is locked after creation.
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
+                      Token Dashboard
                     </p>
+                    <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                      Manage token inventory
+                    </h2>
                   </div>
-
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
-                    <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-gray-200">
-                      <Lock className="h-4 w-4" />
-                      Eligible model lists cannot be edited later.
-                    </p>
-                  </div>
-
                   <Button
-                    type="submit"
+                    type="button"
+                    variant="secondary"
                     className="gap-2"
-                    disabled={createStatus === 'loading'}
+                    onClick={refreshTokens}
+                    disabled={tokenStatus === 'loading'}
                   >
-                    <Plus className="h-4 w-4" />
-                    {createStatus === 'loading' ? 'Creating token...' : 'Create token'}
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh tokens
                   </Button>
+                </div>
 
-                  {createMessage && (
-                    <p className="text-xs text-red-500" aria-live="polite">
-                      {createMessage}
+                {!authToken && (
+                  <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                    <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-gray-200">
+                      <ShieldX className="h-4 w-4" />
+                      To manage tokens, paste an existing token secret.
                     </p>
-                  )}
-
-                  {newTokenSecret && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                      <p className="flex items-center gap-2 font-semibold">
-                        <KeyRound className="h-4 w-4" />
-                        New token created. This secret will not be shown again.
-                      </p>
-                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <div className="flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 font-mono text-xs">
-                          {newTokenSecret}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="gap-2"
-                          onClick={() => handleCopy(newTokenSecret, 'Token copied')}
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy
+                    <div className="mt-3 flex flex-col gap-3">
+                      <input
+                        type="password"
+                        value={authTokenInput}
+                        onChange={(event) => setAuthTokenInput(event.target.value)}
+                        placeholder="wf_..."
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                      />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Button type="button" onClick={saveAuthToken}>
+                          Save token
                         </Button>
+                        {tokenMessage && (
+                          <span className="text-xs text-red-500">{tokenMessage}</span>
+                        )}
                       </div>
-                      {newTokenModels.length > 0 && (
-                        <div className="mt-4">
-                          <p className="text-xs uppercase text-emerald-700">Eligible models</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {newTokenModels.map((model) => (
-                              <span
-                                key={model}
-                                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700"
-                              >
-                                {model}
+                    </div>
+                  </div>
+                )}
+
+                {authToken && (
+                  <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="flex items-center gap-2 font-semibold">
+                          <ShieldCheck className="h-4 w-4" />
+                          Token secret stored for this session only
+                        </p>
+                        <p className="mt-1 text-xs text-emerald-700">
+                          It stays in memory only. Reloading will clear it.
+                        </p>
+                      </div>
+                      <Button type="button" variant="secondary" onClick={clearAuthToken}>
+                        Forget token
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-8">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Token list</h3>
+                    <span className="text-xs text-slate-500 dark:text-gray-400">
+                      {tokens.length} tokens
+                    </span>
+                  </div>
+
+                  {tokens.length === 0 ? (
+                    <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                      No tokens yet. Create one to access the API.
+                    </div>
+                  ) : (
+                    <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white text-sm dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900">
+                      {tokens.map((token) => (
+                        <div
+                          key={token.id}
+                          className="grid gap-4 px-4 py-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.7fr_auto] md:items-center"
+                        >
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                              {token.name || 'Untitled token'}
+                            </p>
+                            <p className="text-xs text-slate-500">{token.id}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-slate-400">Created</p>
+                            <p className="text-gray-700 dark:text-gray-300">{formatDate(token.created_at)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase text-slate-400">Updated</p>
+                            <p className="text-gray-700 dark:text-gray-300">{formatDate(token.updated_at)}</p>
+                          </div>
+                          <div>
+                            {token.is_primary ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700">
+                                <Lock className="h-3 w-3" />
+                                Primary
                               </span>
-                            ))}
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+                                Standard
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="gap-2 text-red-600 hover:text-red-700"
+                              onClick={() => deleteToken(token)}
+                              disabled={token.is_primary || tokenStatus === 'loading'}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
                           </div>
                         </div>
-                      )}
-                      {copyLabel && (
-                        <p className="mt-3 text-xs text-emerald-700">{copyLabel}</p>
-                      )}
+                      ))}
                     </div>
                   )}
-                </form>
+
+                  {tokenMessage && (
+                    <p className="mt-3 text-xs text-red-500" aria-live="polite">
+                      {tokenMessage}
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-10">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Create token</h3>
+                    <span className="text-xs text-slate-500 dark:text-gray-400">
+                      Immutable configuration
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleCreateToken} className="mt-4 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="token-name">
+                        Token name (optional)
+                      </label>
+                      <input
+                        id="token-name"
+                        type="text"
+                        value={tokenName}
+                        onChange={(event) => setTokenName(event.target.value)}
+                        className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                        placeholder="Production access"
+                      />
+                    </div>
+
+                    <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                      Allowed models
+                      </label>
+                      <div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200 dark:border-gray-700 dark:bg-gray-950">
+                        {eligibleModels.map((model) => (
+                          <span
+                            key={model}
+                            className="flex items-center gap-1 rounded-full bg-brand-100 px-2 py-1 text-xs font-semibold text-brand-700"
+                          >
+                            {model}
+                            <button
+                              type="button"
+                              onClick={() => removeModel(model)}
+                              className="text-brand-700 hover:text-brand-900"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={modelInput}
+                          onChange={(event) => setModelInput(event.target.value)}
+                          onKeyDown={handleModelKeyDown}
+                          onBlur={handleModelBlur}
+                          placeholder="gpt-4o-mini"
+                          className="min-w-[140px] flex-1 bg-transparent text-gray-900 outline-none dark:text-white"
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
+                      Press Enter or comma to add multiple models. This list is locked after creation.
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
+                      <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-gray-200">
+                        <Lock className="h-4 w-4" />
+                      Allowed model lists cannot be edited later.
+                      </p>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="gap-2"
+                      disabled={createStatus === 'loading'}
+                    >
+                      <Plus className="h-4 w-4" />
+                      {createStatus === 'loading' ? 'Creating token...' : 'Create token'}
+                    </Button>
+
+                    {createMessage && (
+                      <p className="text-xs text-red-500" aria-live="polite">
+                        {createMessage}
+                      </p>
+                    )}
+
+                    {newTokenSecret && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                        <p className="flex items-center gap-2 font-semibold">
+                          <KeyRound className="h-4 w-4" />
+                          New token created. This secret will not be shown again.
+                        </p>
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <div className="flex-1 rounded-lg border border-emerald-200 bg-white px-3 py-2 font-mono text-xs">
+                            {newTokenSecret}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="gap-2"
+                            onClick={() => handleCopy(newTokenSecret, 'Token copied')}
+                          >
+                            <Copy className="h-4 w-4" />
+                            Copy
+                          </Button>
+                        </div>
+                        {newTokenModels.length > 0 && (
+                          <div className="mt-4">
+                          <p className="text-xs uppercase text-emerald-700">Allowed models</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {newTokenModels.map((model) => (
+                                <span
+                                  key={model}
+                                  className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                >
+                                  {model}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {copyLabel && (
+                          <p className="mt-3 text-xs text-emerald-700">{copyLabel}</p>
+                        )}
+                      </div>
+                    )}
+                  </form>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div
+                ref={dashboardRef}
+                className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400"
+              >
+                <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
+                  <KeyRound className="h-4 w-4" />
+                  Login required to view token dashboard
+                </p>
+                <p className="mt-2">
+                  Complete signup or sign in to access token management.
+                </p>
+              </div>
+            )}
           </div>
         </Container>
       </section>

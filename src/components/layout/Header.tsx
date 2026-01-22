@@ -64,12 +64,6 @@ export function Header() {
             >
               API Reference
             </Link>
-            <Link
-              href="/console"
-              className="text-sm font-medium text-gray-500 transition-colors hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
-            >
-              User Console
-            </Link>
             <Button variant="primary" size="sm" onClick={() => scrollToId('signup')}>
               Notify me
             </Button>

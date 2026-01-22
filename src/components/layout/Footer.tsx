@@ -46,11 +46,6 @@ export function Footer() {
                     API Reference
                   </a>
                 </li>
-                <li>
-                  <a href="/console" className="hover:text-brand-600 dark:hover:text-brand-400">
-                    User Console
-                  </a>
-                </li>
               </ul>
             </div>
 
