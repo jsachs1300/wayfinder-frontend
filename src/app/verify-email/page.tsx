@@ -1,16 +1,15 @@
-'use client'
+import { redirect } from 'next/navigation'
 
-import { useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+type SearchParams = Record<string, string | string[] | undefined>
 
-export default function VerifyEmailRedirectPage() {
-  const params = useSearchParams()
-
-  useEffect(() => {
-    const token = params.get('token')
-    const target = token ? `/verify?token=${encodeURIComponent(token)}` : '/verify'
-    window.location.replace(target)
-  }, [params])
-
-  return null
+export default async function VerifyEmailRedirectPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SearchParams>
+}) {
+  const resolved = searchParams ? await searchParams : undefined
+  const rawToken = resolved?.token
+  const token = Array.isArray(rawToken) ? rawToken[0] : rawToken
+  const target = token ? `/verify?token=${encodeURIComponent(token)}` : '/verify'
+  redirect(target)
 }

@@ -1,6 +1,7 @@
 type SessionData = {
   token: string
   isAdmin: boolean
+  expiresAt?: string
 }
 
 type SessionListener = (session: SessionData | null) => void
@@ -24,5 +25,7 @@ export function clearSession() {
 
 export function subscribeSession(listener: SessionListener) {
   listeners.add(listener)
-  return () => listeners.delete(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }

@@ -1,8 +1,7 @@
 'use client'
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
@@ -81,7 +80,6 @@ const formatDate = (value?: string | null) => {
 }
 
 export function UserAccessConsole() {
-  const params = useSearchParams()
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   const apiUrl = (path: string) => {
     if (!apiBaseUrl) return path
@@ -147,11 +145,12 @@ export function UserAccessConsole() {
   }, [copyLabel])
 
   useEffect(() => {
-    const login = params.get('login')
-    if (login) {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('login')) {
       setActiveTab('login')
     }
-  }, [params])
+  }, [])
 
   useEffect(() => {
     if (loginStatus !== 'success') return
@@ -507,10 +506,6 @@ export function UserAccessConsole() {
       setCreateMessage('Unable to create token. Check the model list and try again.')
       setCreateStatus('error')
     }
-  }
-
-  const scrollToDashboard = () => {
-    dashboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
@@ -886,7 +881,12 @@ export function UserAccessConsole() {
                                   <Button
                                     type="button"
                                     variant="secondary"
-                                    onClick={() => handleCopy(rotatedTokenSecrets[token.id], 'Token copied')}
+                                    onClick={() => {
+                                      const secret = rotatedTokenSecrets[token.id]
+                                      if (secret) {
+                                        handleCopy(secret, 'Token copied')
+                                      }
+                                    }}
                                   >
                                     Copy
                                   </Button>

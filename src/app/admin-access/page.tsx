@@ -100,12 +100,12 @@ export default function AdminAccessPage() {
           )}
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild variant="secondary">
-              <a href="/console">Return to token dashboard</a>
-            </Button>
-            <Button asChild>
-              <a href="/admin">Open admin console</a>
-            </Button>
+            <a href="/console">
+              <Button variant="secondary">Return to token dashboard</Button>
+            </a>
+            <a href="/admin">
+              <Button>Open admin console</Button>
+            </a>
           </div>
         </div>
       </Container>
