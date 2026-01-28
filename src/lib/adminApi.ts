@@ -10,7 +10,11 @@ export async function adminFetch<T>(
 ): Promise<T> {
   const { sessionToken, adminKey, headers, ...rest } = options
   const url = typeof input === 'string'
-    ? `${input.startsWith('/') ? input : `/${input}`}`
+    ? (() => {
+      const path = input.startsWith('/') ? input : `/${input}`
+      if (path.startsWith('/api/')) return path
+      return `/api${path}`
+    })()
     : input
   const response = await fetch(url, {
     ...rest,
