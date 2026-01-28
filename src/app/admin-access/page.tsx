@@ -11,12 +11,7 @@ export default function AdminAccessPage() {
   const [message, setMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
-  const apiUrl = (path: string) => {
-    if (!apiBaseUrl) return path
-    const base = apiBaseUrl.replace(/\/$/, '')
-    return `${base}${path.startsWith('/') ? path : `/${path}`}`
-  }
+  const apiUrl = (path: string) => (path.startsWith('/') ? path : `/${path}`)
 
   const handleElevate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()

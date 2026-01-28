@@ -25,12 +25,7 @@ export default function VerifyClient() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
-  const apiUrl = (path: string) => {
-    if (!apiBaseUrl) return path
-    const base = apiBaseUrl.replace(/\/$/, '')
-    return `${base}${path.startsWith('/') ? path : `/${path}`}`
-  }
+  const apiUrl = (path: string) => (path.startsWith('/') ? path : `/${path}`)
 
   useEffect(() => {
     const queryToken = params.get('token')

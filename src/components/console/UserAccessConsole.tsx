@@ -80,15 +80,8 @@ const formatDate = (value?: string | null) => {
 }
 
 export function UserAccessConsole() {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   const apiUrl = (path: string) => {
-    if (!apiBaseUrl) return path
-    const base = apiBaseUrl.replace(/\/$/, '')
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`
-    if (base.endsWith('/api') && normalizedPath.startsWith('/api/')) {
-      return `${base}${normalizedPath.slice(4)}`
-    }
-    return `${base}${normalizedPath}`
+    return path.startsWith('/') ? path : `/${path}`
   }
 
   const logRequest = (label: string, url: string, options: RequestInit) => {

@@ -9,9 +9,12 @@ export async function adminFetch<T>(
   options: RequestInit & { sessionToken?: string; adminKey?: string } = {}
 ): Promise<T> {
   const { sessionToken, adminKey, headers, ...rest } = options
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
   const url = typeof input === 'string'
-    ? `${baseUrl ? baseUrl.replace(/\/$/, '') : ''}${input.startsWith('/') ? input : `/${input}`}`
+    ? (() => {
+      const path = input.startsWith('/') ? input : `/${input}`
+      if (path.startsWith('/api/')) return path
+      return `/api${path}`
+    })()
     : input
   const response = await fetch(url, {
     ...rest,
