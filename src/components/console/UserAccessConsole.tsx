@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
-import { clearSession, setSession } from '@/lib/sessionStore'
+import { clearSession, getSession, setSession, subscribeSession } from '@/lib/sessionStore'
 import {
   CheckCircle2,
   Copy,
@@ -246,6 +246,19 @@ export function UserAccessConsole() {
   const [showSessionNotice, setShowSessionNotice] = useState(false)
   const [fadeSessionNotice, setFadeSessionNotice] = useState(false)
 
+
+  const getActiveSessionToken = () => {
+    const token = getSession()?.token || sessionToken
+    return typeof token === 'string' ? token.trim() : ''
+  }
+
+  useEffect(() => {
+    setSessionToken(getSession()?.token || null)
+    const unsubscribe = subscribeSession((next) => {
+      setSessionToken(next?.token || null)
+    })
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     if (!copyLabel) return
@@ -515,7 +528,8 @@ export function UserAccessConsole() {
 
 
   const refreshTokens = async () => {
-    if (!sessionToken) {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
       setTokenMessage('Sign in to load tokens.')
       return
     }
@@ -526,7 +540,7 @@ export function UserAccessConsole() {
     try {
       const url = apiUrl('/api/tokens')
       const options: RequestInit = {
-        headers: { 'X-Session-Token': sessionToken },
+        headers: { 'X-Session-Token': authToken },
       }
       logRequest('tokens:list', url, options)
       const response = await fetch(url, options)
@@ -552,11 +566,12 @@ export function UserAccessConsole() {
   }
 
   const handleLogout = async () => {
-    if (!sessionToken) return
+    const authToken = getActiveSessionToken()
+    if (!authToken) return
     try {
       await fetch(apiUrl('/api/sessions/logout'), {
         method: 'POST',
-        headers: { 'X-Session-Token': sessionToken },
+        headers: { 'X-Session-Token': authToken },
       })
     } catch {
       // Ignore logout errors; clear local state anyway.
@@ -574,7 +589,8 @@ export function UserAccessConsole() {
   }
 
   const deleteToken = async (token: TokenMeta) => {
-    if (!sessionToken) {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
       setTokenMessage('Sign in to delete tokens.')
       return
     }
@@ -588,7 +604,7 @@ export function UserAccessConsole() {
       const url = apiUrl(`/api/tokens/${token.id}`)
       const options: RequestInit = {
         method: 'DELETE',
-        headers: { 'X-Session-Token': sessionToken },
+        headers: { 'X-Session-Token': authToken },
       }
       logRequest('tokens:delete', url, options)
       const response = await fetch(url, options)
@@ -619,7 +635,8 @@ export function UserAccessConsole() {
   }
 
   const rotateToken = async (token: TokenMeta) => {
-    if (!sessionToken) {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
       setTokenMessage('Sign in to rotate tokens.')
       return
     }
@@ -635,7 +652,7 @@ export function UserAccessConsole() {
     try {
       const response = await fetch(apiUrl(`/api/tokens/${token.id}/rotate`), {
         method: 'POST',
-        headers: { 'X-Session-Token': sessionToken },
+        headers: { 'X-Session-Token': authToken },
       })
 
       const data = (await response.json().catch(() => null)) as { token?: string } | null
@@ -704,7 +721,8 @@ export function UserAccessConsole() {
     event.preventDefault()
     setCreateMessage('')
 
-    if (!sessionToken) {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
       setCreateMessage('Sign in to create tokens.')
       return
     }
@@ -727,7 +745,7 @@ export function UserAccessConsole() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Session-Token': sessionToken,
+          'X-Session-Token': authToken,
         },
         body: JSON.stringify({
           eligible_models: eligibleModels.length > 0 ? eligibleModels : undefined,
@@ -739,7 +757,11 @@ export function UserAccessConsole() {
 
       const data = (await response.json().catch(() => null)) as CreateTokenResponse | null
       if (!response.ok || !data) {
-        setCreateMessage('Unable to create token. Check the model list and try again.')
+        setCreateMessage(
+          response.status === 401
+            ? 'Session is not valid. Sign in again and retry.'
+            : 'Unable to create token. Check the model list and try again.'
+        )
         setCreateStatus('error')
         return
       }
