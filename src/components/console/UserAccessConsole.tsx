@@ -6,7 +6,6 @@ import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { clearSession, setSession } from '@/lib/sessionStore'
-import { RegistryModel, UserRegistryResponse } from '@/types/registry'
 import {
   CheckCircle2,
   Copy,
@@ -28,6 +27,18 @@ type LoginStatus = 'idle' | 'loading' | 'success' | 'error'
 type TokenActionStatus = 'idle' | 'loading' | 'success' | 'error'
 
 type RouteStatus = 'idle' | 'loading' | 'success' | 'error'
+
+type RegistryModel = {
+  id: string
+  provider?: string
+  display_name?: string
+  available?: boolean
+  status?: string
+}
+
+type UserRegistryResponse = {
+  models?: RegistryModel[]
+}
 
 type UserProfile = {
   email: string
