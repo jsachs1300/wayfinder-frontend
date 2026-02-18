@@ -352,6 +352,11 @@ export function UserAccessConsole() {
     [activeRouteTokens, selectedRouteTokenId]
   )
 
+  const selectedRouteTokenSecret = useMemo(
+    () => tokenSecretsById[selectedRouteTokenId] || '',
+    [selectedRouteTokenId, tokenSecretsById]
+  )
+
   const selectedRouteEligibleModels = useMemo(
     () => selectedRouteToken?.eligible_models || [],
     [selectedRouteToken]
@@ -772,6 +777,13 @@ export function UserAccessConsole() {
       setRouteStatus('error')
       return
     }
+    if (!selectedRouteTokenSecret) {
+      setRouteMessage(
+        'Selected token secret is not available in this session. Create or rotate a token, then use it for routing.'
+      )
+      setRouteStatus('error')
+      return
+    }
     if (!routePrompt.trim()) {
       setRouteMessage('Prompt is required.')
       setRouteStatus('error')
@@ -781,7 +793,6 @@ export function UserAccessConsole() {
     setRouteStatus('loading')
 
     try {
-      const resolvedRouteToken = tokenSecretsById[selectedRouteTokenId] || selectedRouteTokenId
       const payload: Record<string, unknown> = {
         prompt: routePrompt.trim(),
         router_model: routeRouterModel,
@@ -793,7 +804,7 @@ export function UserAccessConsole() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Wayfinder-Token': resolvedRouteToken,
+          'X-Wayfinder-Token': selectedRouteTokenSecret,
         },
         body: JSON.stringify(payload),
       }
@@ -1278,12 +1289,18 @@ export function UserAccessConsole() {
                       {activeRouteTokens.map((token) => (
                         <option key={token.id} value={token.id}>
                           {(token.name || 'Untitled token')} ({token.id})
+                          {tokenSecretsById[token.id] ? '' : ' - secret unavailable'}
                         </option>
                       ))}
                     </select>
                     <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
                       Choose any active token from your account.
                     </p>
+                    {!selectedRouteTokenSecret && selectedRouteTokenId && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        This token secret is not in memory. Create or rotate a token to route from this console session.
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -1338,7 +1355,11 @@ export function UserAccessConsole() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
-                    <Button type="submit" className="gap-2" disabled={routeStatus === 'loading'}>
+                    <Button
+                      type="submit"
+                      className="gap-2"
+                      disabled={routeStatus === 'loading' || !selectedRouteTokenId || !selectedRouteTokenSecret}
+                    >
                       <Send className="h-4 w-4" />
                       {routeStatus === 'loading' ? 'Routing...' : 'Route prompt'}
                     </Button>
