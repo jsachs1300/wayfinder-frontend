@@ -269,23 +269,20 @@ export default function ApiReferencePage() {
               </h3>
               <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2 mb-4">
                 <li><span className="font-semibold">name</span> (string, optional)</li>
-                <li><span className="font-semibold">trusted_anchor_model</span> (string, optional)</li>
-                <li><span className="font-semibold">allowed_models</span> (string[], optional)</li>
-                <li><span className="font-semibold">denied_models</span> (string[], optional)</li>
-                <li><span className="font-semibold">policy_rules</span> (array, optional)</li>
-                <li><span className="font-semibold">confidence_threshold</span> (number 0-1, optional)</li>
-                <li><span className="font-semibold">logging_level</span> (normal | verbose, optional)</li>
-                <li><span className="font-semibold">default_model</span> (string, optional)</li>
+                <li><span className="font-semibold">eligible_models</span> (string[], optional)</li>
                 <li><span className="font-semibold">environment</span> (prod | dev, optional)</li>
-                <li><span className="font-semibold">knowledge_scope</span> (global | token | org | hybrid, optional)</li>
                 <li><span className="font-semibold">router_model_preference</span> (openai | gemini | consensus, optional)</li>
               </ul>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                If <span className="font-semibold">eligible_models</span> is omitted or empty, the backend resolves
+                model eligibility from the current default-token profile.
+              </p>
 
               <pre className="rounded-lg bg-gray-950 text-gray-100 p-4 text-sm overflow-x-auto mb-6">
 {`{
   "name": "Staging Token",
+  "eligible_models": ["gpt-4o-mini", "gemini-2.5-flash"],
   "environment": "dev",
-  "logging_level": "verbose",
   "router_model_preference": "consensus"
 }`}
               </pre>
@@ -297,6 +294,28 @@ export default function ApiReferencePage() {
 {`{
   "token": "wf_...",
   "rotated_at": "2026-01-15T18:20:00.000Z"
+}`}
+              </pre>
+
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mt-8 mb-2">
+                Admin default-token profile
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Admins can manage the system-wide default token model list via
+                <span className="font-semibold"> GET/PUT /admin/default-token-profile</span>.
+              </p>
+              <pre className="rounded-lg bg-gray-950 text-gray-100 p-4 text-sm overflow-x-auto">
+{`{
+  "profile": {
+    "model_ids": ["gpt-4o-mini", "gemini-2.5-flash"],
+    "version": 4
+  },
+  "effective_model_ids": ["gpt-4o-mini", "gemini-2.5-flash"],
+  "missing_model_ids": [],
+  "recommended_model_ids": ["gpt-4o-mini", "gemini-2.5-flash"],
+  "cache_scope": "global:v4",
+  "cache_flush_recommended": true,
+  "cache_flush_hint": "Clear global cache if immediate cleanup is needed."
 }`}
               </pre>
             </div>

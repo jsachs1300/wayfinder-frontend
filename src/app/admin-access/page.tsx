@@ -1,11 +1,13 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { getSession, setSession } from '@/lib/sessionStore'
 
 export default function AdminAccessPage() {
+  const router = useRouter()
   const session = useMemo(() => getSession(), [])
   const [adminKey, setAdminKey] = useState('')
   const [message, setMessage] = useState('')
@@ -47,7 +49,7 @@ export default function AdminAccessPage() {
       }
 
       setSession({ token: data.session_token, isAdmin: true })
-      setMessage('Admin session active. You can open the admin console.')
+      router.push('/admin')
     } catch {
       setMessage('Unable to elevate. Please try again.')
     } finally {
@@ -63,10 +65,10 @@ export default function AdminAccessPage() {
             Admin Access
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-            Elevate your session
+            Open admin console
           </h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-gray-300">
-            Enter an admin API key to elevate the current session.
+            Enter your admin API key. We will elevate your session and open the admin console.
           </p>
 
           <form onSubmit={handleElevate} className="mt-6 space-y-4">
@@ -84,7 +86,7 @@ export default function AdminAccessPage() {
             </div>
 
             <Button type="submit" size="lg" disabled={isLoading}>
-              {isLoading ? 'Elevating...' : 'Elevate session'}
+              {isLoading ? 'Opening admin console...' : 'Open admin console'}
             </Button>
           </form>
 
@@ -97,9 +99,6 @@ export default function AdminAccessPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="/console">
               <Button variant="secondary">Return to token dashboard</Button>
-            </a>
-            <a href="/admin">
-              <Button>Open admin console</Button>
             </a>
           </div>
         </div>

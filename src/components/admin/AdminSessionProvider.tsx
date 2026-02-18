@@ -39,7 +39,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
       try {
         const data = await adminFetch<{ session?: { is_admin?: boolean; expires_at?: string } }>(
           '/api/sessions/validate',
-          { sessionToken: session.token }
+          { method: 'POST', sessionToken: session.token }
         )
 
         if (!data.session?.is_admin) {
