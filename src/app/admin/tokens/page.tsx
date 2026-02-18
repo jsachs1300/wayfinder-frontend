@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader'
 import { useAdminSession } from '@/components/admin/AdminSessionProvider'
 import { adminFetch } from '@/lib/adminApi'
@@ -22,8 +22,6 @@ type TokenRecord = {
 type TokenListResponse = { tokens: TokenRecord[]; count?: number }
 
 type CreateTokenResponse = { id: string; token: string; config?: { eligible_models?: string[] } }
-
-type RotateTokenResponse = { token: string }
 
 type AdminModelRecord = {
   id: string
@@ -71,6 +69,8 @@ const isDefaultToken = (token: TokenRecord) => token.name === DEFAULT_TOKEN_NAME
 export default function AdminTokensPage() {
   const { session } = useAdminSession()
   const [tokens, setTokens] = useState<TokenRecord[]>([])
+  const [tokenCount, setTokenCount] = useState(0)
+  const [expandedTokenId, setExpandedTokenId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -127,7 +127,9 @@ export default function AdminTokensPage() {
       const data = await adminFetch<TokenListResponse>('/admin/tokens', {
         sessionToken: session.token,
       })
-      setTokens(data.tokens || [])
+      const nextTokens = data.tokens || []
+      setTokens(nextTokens)
+      setTokenCount(data.count ?? nextTokens.length)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load tokens.')
     } finally {
@@ -301,25 +303,6 @@ export default function AdminTokensPage() {
     }
   }
 
-  const rotateToken = async (tokenId: string) => {
-    if (!session?.token) return
-    setIsLoading(true)
-    setError('')
-    setCreateToken(null)
-
-    try {
-      const data = await adminFetch<RotateTokenResponse>(`/admin/tokens/${tokenId}/rotate`, {
-        method: 'POST',
-        sessionToken: session.token,
-      })
-      setCreateToken(data.token)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to rotate token.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const deleteToken = async (tokenId: string) => {
     if (!session?.token) return
     const confirmed = window.confirm('Delete this token? This cannot be undone.')
@@ -403,7 +386,12 @@ export default function AdminTokensPage() {
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Token inventory</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Token inventory</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
+                Total system tokens: {tokenCount}
+              </p>
+            </div>
             <Button type="button" variant="secondary" size="sm" onClick={loadTokens} disabled={isLoading}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Refresh
@@ -415,8 +403,7 @@ export default function AdminTokensPage() {
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500 dark:bg-gray-950 dark:text-gray-400">
                 <tr>
                   <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Token ID</th>
-                  <th className="px-3 py-2">Eligible models</th>
+                  <th className="px-3 py-2">User</th>
                   <th className="px-3 py-2">Created</th>
                   <th className="px-3 py-2">Actions</th>
                 </tr>
@@ -424,58 +411,72 @@ export default function AdminTokensPage() {
               <tbody className="divide-y divide-slate-200 bg-white dark:divide-gray-800 dark:bg-gray-900">
                 {tokens.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 text-slate-500" colSpan={5}>
+                    <td className="px-3 py-4 text-slate-500" colSpan={4}>
                       No admin tokens found.
                     </td>
                   </tr>
                 )}
                 {tokens.map((token) => (
-                  <tr key={token.id}>
-                    <td className="px-3 py-3 text-gray-900 dark:text-white">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{token.name || 'Untitled token'}</span>
-                        {isDefaultToken(token) && (
-                          <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
-                            default token
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs text-slate-600 dark:text-gray-300">{token.id}</td>
-                    <td className="px-3 py-3 text-slate-600 dark:text-gray-300">
-                      {token.eligible_models?.length ? token.eligible_models.join(', ') : '—'}
-                      {isDefaultToken(token) && (
-                        <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">
-                          Resolved from the default-token profile.
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-slate-500">{formatDate(token.created_at)}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => rotateToken(token.id)}
-                          disabled={isLoading}
-                        >
-                          Rotate
-                        </Button>
+                  <Fragment key={token.id}>
+                    <tr
+                      onClick={() => setExpandedTokenId((prev) => (prev === token.id ? null : token.id))}
+                      className="cursor-pointer hover:bg-slate-50 dark:hover:bg-gray-950/70"
+                    >
+                      <td className="px-3 py-3 text-gray-900 dark:text-white">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{token.name || 'Untitled token'}</span>
+                          {isDefaultToken(token) && (
+                            <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                              default token
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600 dark:text-gray-300">{token.user_id || '—'}</td>
+                      <td className="px-3 py-3 text-slate-500">{formatDate(token.created_at)}</td>
+                      <td className="px-3 py-3">
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="text-red-600 hover:text-red-700"
-                          onClick={() => deleteToken(token.id)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void deleteToken(token.id)
+                          }}
                           disabled={isLoading}
                         >
                           <Trash2 className="mr-1 h-4 w-4" />
                           Delete
                         </Button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    {expandedTokenId === token.id && (
+                      <tr className="bg-slate-50/70 dark:bg-gray-950/50">
+                        <td className="px-3 py-3 text-xs text-slate-600 dark:text-gray-300" colSpan={4}>
+                          <p className="font-semibold text-slate-700 dark:text-gray-200">Token ID</p>
+                          <p className="mt-1 font-mono">{token.id}</p>
+                          <p className="mt-3 font-semibold text-slate-700 dark:text-gray-200">Eligible models</p>
+                          {(token.eligible_models || []).length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {token.eligible_models?.map((model) => (
+                                <span
+                                  key={`${token.id}-${model}`}
+                                  className="rounded-full bg-brand-100 px-2 py-1 text-[11px] font-semibold text-brand-700"
+                                >
+                                  {model}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-[11px] text-slate-500 dark:text-gray-400">
+                              Resolved from the default-token profile.
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
