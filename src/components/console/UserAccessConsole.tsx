@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
@@ -49,6 +49,7 @@ type UserProfile = {
 type TokenMeta = {
   id: string
   name?: string | null
+  token?: string | null
   is_primary: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -102,6 +103,79 @@ const formatDate = (value?: string | null) => {
   }).format(parsed)
 }
 
+const extractTokenSecrets = (tokenList: TokenMeta[]) => {
+  return tokenList.reduce<Record<string, string>>((acc, token) => {
+    if (typeof token.token === 'string' && token.token.trim()) {
+      acc[token.id] = token.token.trim()
+    }
+    return acc
+  }, {})
+}
+
+const renderJsonValue = (value: unknown, depth = 0): ReactNode => {
+  const indent = { paddingLeft: `${depth * 16}px` }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return <span>[]</span>
+    }
+    return (
+      <>
+        <div>[</div>
+        {value.map((item, index) => (
+          <div key={`array-${depth}-${index}`} style={{ paddingLeft: `${(depth + 1) * 16}px` }}>
+            {renderJsonValue(item, depth + 1)}
+            {index < value.length - 1 ? ',' : ''}
+          </div>
+        ))}
+        <div style={indent}>]</div>
+      </>
+    )
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) {
+      return <span>{'{}'}</span>
+    }
+    return (
+      <>
+        <div>{'{'}</div>
+        {entries.map(([key, nestedValue], index) => (
+          <div key={`object-${depth}-${key}`} style={{ paddingLeft: `${(depth + 1) * 16}px` }}>
+            <span className="font-semibold text-brand-700 dark:text-brand-300">
+              {'"'}
+              {key}
+              {'"'}
+            </span>
+            <span className="text-slate-500 dark:text-gray-400">: </span>
+            {renderJsonValue(nestedValue, depth + 1)}
+            {index < entries.length - 1 ? ',' : ''}
+          </div>
+        ))}
+        <div style={indent}>{'}'}</div>
+      </>
+    )
+  }
+
+  if (typeof value === 'string') {
+    return (
+      <span className="text-emerald-700 dark:text-emerald-300">
+        {'"'}
+        {value}
+        {'"'}
+      </span>
+    )
+  }
+  if (typeof value === 'number') {
+    return <span className="text-sky-700 dark:text-sky-300">{value}</span>
+  }
+  if (typeof value === 'boolean') {
+    return <span className="text-violet-700 dark:text-violet-300">{String(value)}</span>
+  }
+  return <span className="text-slate-500 dark:text-gray-400">null</span>
+}
+
 export function UserAccessConsole() {
   const apiUrl = (path: string) => {
     return path.startsWith('/') ? path : `/${path}`
@@ -143,17 +217,16 @@ export function UserAccessConsole() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [tokens, setTokens] = useState<TokenMeta[]>([])
+  const [tokenSecretsById, setTokenSecretsById] = useState<Record<string, string>>({})
   const [newTokenSecret, setNewTokenSecret] = useState<string | null>(null)
   const [newTokenModels, setNewTokenModels] = useState<string[]>([])
   const [expandedTokenId, setExpandedTokenId] = useState<string | null>(null)
   const [rotatedTokenSecrets, setRotatedTokenSecrets] = useState<Record<string, string>>({})
 
-  const [routeToken, setRouteToken] = useState('')
+  const [selectedRouteTokenId, setSelectedRouteTokenId] = useState('')
   const [routePrompt, setRoutePrompt] = useState('')
-  const [routeContext, setRouteContext] = useState('')
-  const [routeMetadata, setRouteMetadata] = useState('')
   const [routePreferModel, setRoutePreferModel] = useState('')
-  const [routeRouterModel, setRouteRouterModel] = useState('')
+  const [routeRouterModel, setRouteRouterModel] = useState('consensus')
   const [routeStatus, setRouteStatus] = useState<RouteStatus>('idle')
   const [routeMessage, setRouteMessage] = useState('')
   const [routeResponse, setRouteResponse] = useState<RouteResponse | null>(null)
@@ -265,6 +338,46 @@ export function UserAccessConsole() {
       .slice(0, 8)
   }, [modelInput, validRegistryModels, eligibleModels])
 
+  const activeRouteTokens = useMemo(
+    () =>
+      tokens.filter((token) => {
+        const status = typeof token.status === 'string' ? token.status.toLowerCase() : 'active'
+        return status !== 'revoked' && status !== 'deleted' && status !== 'inactive'
+      }),
+    [tokens]
+  )
+
+  const selectedRouteToken = useMemo(
+    () => activeRouteTokens.find((token) => token.id === selectedRouteTokenId) || null,
+    [activeRouteTokens, selectedRouteTokenId]
+  )
+
+  const selectedRouteEligibleModels = useMemo(
+    () => selectedRouteToken?.eligible_models || [],
+    [selectedRouteToken]
+  )
+
+  useEffect(() => {
+    if (activeRouteTokens.length === 0) {
+      setSelectedRouteTokenId('')
+      setRoutePreferModel('')
+      return
+    }
+    const firstActiveTokenId = activeRouteTokens[0]?.id
+    if (!firstActiveTokenId) return
+    setSelectedRouteTokenId((prev) =>
+      prev && activeRouteTokens.some((token) => token.id === prev)
+        ? prev
+        : firstActiveTokenId
+    )
+  }, [activeRouteTokens])
+
+  useEffect(() => {
+    if (!routePreferModel) return
+    if (selectedRouteEligibleModels.includes(routePreferModel)) return
+    setRoutePreferModel('')
+  }, [routePreferModel, selectedRouteEligibleModels])
+
   const handleCopy = async (value: string, label: string) => {
     try {
       await navigator.clipboard.writeText(value)
@@ -364,7 +477,9 @@ export function UserAccessConsole() {
       setUserProfile(data.user)
       setSessionToken(data.session_token)
       setSession({ token: data.session_token, isAdmin: false })
-      setTokens(data.tokens || [])
+      const nextTokens = data.tokens || []
+      setTokens(nextTokens)
+      setTokenSecretsById((prev) => ({ ...prev, ...extractTokenSecrets(nextTokens) }))
       setLoginStatus('success')
     } catch {
       setLoginMessage('Something went wrong. Please try again.')
@@ -421,7 +536,9 @@ export function UserAccessConsole() {
         return
       }
 
-      setTokens(data.tokens || [])
+      const nextTokens = data.tokens || []
+      setTokens(nextTokens)
+      setTokenSecretsById((prev) => ({ ...prev, ...extractTokenSecrets(nextTokens) }))
       setTokenStatus('success')
     } catch {
       setTokenMessage('Unable to load tokens. Check the token and try again.')
@@ -443,6 +560,10 @@ export function UserAccessConsole() {
       setSessionToken(null)
       setUserProfile(null)
       setTokens([])
+      setTokenSecretsById({})
+      setSelectedRouteTokenId('')
+      setRoutePreferModel('')
+      setRouteRouterModel('consensus')
       setLoginStatus('idle')
     }
   }
@@ -475,6 +596,16 @@ export function UserAccessConsole() {
       }
 
       setTokens((prev) => prev.filter((item) => item.id !== token.id))
+      setTokenSecretsById((prev) => {
+        const next = { ...prev }
+        delete next[token.id]
+        return next
+      })
+      setRotatedTokenSecrets((prev) => {
+        const next = { ...prev }
+        delete next[token.id]
+        return next
+      })
       setTokenStatus('success')
     } catch {
       setTokenMessage('Unable to delete token. Please try again.')
@@ -510,6 +641,8 @@ export function UserAccessConsole() {
       }
 
       setRotatedTokenSecrets((prev) => ({ ...prev, [token.id]: data.token as string }))
+      setTokenSecretsById((prev) => ({ ...prev, [token.id]: data.token as string }))
+      setSelectedRouteTokenId(token.id)
       setTokenStatus('success')
     } catch {
       setTokenMessage('Unable to rotate token. Please try again.')
@@ -608,6 +741,8 @@ export function UserAccessConsole() {
 
       setNewTokenSecret(data.token)
       setNewTokenModels(data.config?.eligible_models || eligibleModels)
+      setTokenSecretsById((prev) => ({ ...prev, [data.id]: data.token }))
+      setSelectedRouteTokenId(data.id)
       setTokens((prev) => [
         ...prev,
         {
@@ -626,23 +761,14 @@ export function UserAccessConsole() {
     }
   }
 
-  const parseOptionalJson = (value: string, label: string) => {
-    if (!value.trim()) return { parsed: undefined as Record<string, unknown> | undefined }
-    try {
-      return { parsed: JSON.parse(value) as Record<string, unknown> }
-    } catch {
-      return { error: `${label} must be valid JSON.` }
-    }
-  }
-
   const handleRouteRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setRouteMessage('')
     setRouteResponse(null)
     setRateLimitHeaders({})
 
-    if (!routeToken.trim()) {
-      setRouteMessage('Add a Wayfinder token to send a route request.')
+    if (!selectedRouteTokenId) {
+      setRouteMessage('Select an active token to send a route request.')
       setRouteStatus('error')
       return
     }
@@ -652,36 +778,22 @@ export function UserAccessConsole() {
       return
     }
 
-    const parsedContext = parseOptionalJson(routeContext, 'Context')
-    if ('error' in parsedContext) {
-      setRouteMessage(parsedContext.error || 'Context must be valid JSON.')
-      setRouteStatus('error')
-      return
-    }
-    const parsedMetadata = parseOptionalJson(routeMetadata, 'Metadata')
-    if ('error' in parsedMetadata) {
-      setRouteMessage(parsedMetadata.error || 'Metadata must be valid JSON.')
-      setRouteStatus('error')
-      return
-    }
-
     setRouteStatus('loading')
 
     try {
+      const resolvedRouteToken = tokenSecretsById[selectedRouteTokenId] || selectedRouteTokenId
       const payload: Record<string, unknown> = {
         prompt: routePrompt.trim(),
+        router_model: routeRouterModel,
       }
-      if (parsedContext.parsed) payload.context = parsedContext.parsed
-      if (parsedMetadata.parsed) payload.metadata = parsedMetadata.parsed
       if (routePreferModel.trim()) payload.prefer_model = routePreferModel.trim()
-      if (routeRouterModel.trim()) payload.router_model = routeRouterModel.trim()
 
       const url = '/route'
       const options: RequestInit = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Wayfinder-Token': routeToken.trim(),
+          'X-Wayfinder-Token': resolvedRouteToken,
         },
         body: JSON.stringify(payload),
       }
@@ -1102,7 +1214,7 @@ export function UserAccessConsole() {
                                     onClick={() => {
                                       const secret = rotatedTokenSecrets[token.id]
                                       if (secret) {
-                                        setRouteToken(secret)
+                                        setSelectedRouteTokenId(token.id)
                                       }
                                     }}
                                   >
@@ -1152,19 +1264,25 @@ export function UserAccessConsole() {
                 <form onSubmit={handleRouteRequest} className="mt-6 space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="route-token">
-                      Wayfinder token
+                      Active token
                     </label>
-                    <input
+                    <select
                       id="route-token"
-                      type="password"
-                      value={routeToken}
-                      onChange={(event) => setRouteToken(event.target.value)}
-                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                      placeholder="wf_live_..."
-                      autoComplete="off"
-                    />
+                      value={selectedRouteTokenId}
+                      onChange={(event) => setSelectedRouteTokenId(event.target.value)}
+                      className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                    >
+                      <option value="" disabled>
+                        {activeRouteTokens.length > 0 ? 'Select a token' : 'No active tokens available'}
+                      </option>
+                      {activeRouteTokens.map((token) => (
+                        <option key={token.id} value={token.id}>
+                          {(token.name || 'Untitled token')} ({token.id})
+                        </option>
+                      ))}
+                    </select>
                     <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
-                      Tokens are stored in memory only and never logged.
+                      Choose any active token from your account.
                     </p>
                   </div>
 
@@ -1184,48 +1302,27 @@ export function UserAccessConsole() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="route-context">
-                        Context (JSON, optional)
-                      </label>
-                      <textarea
-                        id="route-context"
-                        value={routeContext}
-                        onChange={(event) => setRouteContext(event.target.value)}
-                        className="mt-2 min-h-[96px] w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        placeholder='{"doc_id":"123"}'
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="route-metadata">
-                        Metadata (JSON, optional)
-                      </label>
-                      <textarea
-                        id="route-metadata"
-                        value={routeMetadata}
-                        onChange={(event) => setRouteMetadata(event.target.value)}
-                        className="mt-2 min-h-[96px] w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        placeholder='{"team":"support"}'
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="route-prefer-model">
                         Prefer model (optional)
                       </label>
-                      <input
+                      <select
                         id="route-prefer-model"
-                        type="text"
                         value={routePreferModel}
                         onChange={(event) => setRoutePreferModel(event.target.value)}
-                        className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        placeholder="gpt-4o-mini"
-                      />
+                        className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                        disabled={selectedRouteEligibleModels.length === 0}
+                      >
+                        <option value="">No preference</option>
+                        {selectedRouteEligibleModels.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="route-router-model">
-                        Router override (optional)
+                        Router override
                       </label>
                       <select
                         id="route-router-model"
@@ -1233,10 +1330,9 @@ export function UserAccessConsole() {
                         onChange={(event) => setRouteRouterModel(event.target.value)}
                         className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                       >
-                        <option value="">Auto</option>
+                        <option value="consensus">consensus</option>
                         <option value="openai">openai</option>
                         <option value="gemini">gemini</option>
-                        <option value="consensus">consensus</option>
                       </select>
                     </div>
                   </div>
@@ -1297,7 +1393,10 @@ export function UserAccessConsole() {
                           <span>From cache: {routeResponse.from_cache ? 'Yes' : 'No'}</span>
                         </div>
                         <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200">
-                          {JSON.stringify(routeResponse, null, 2)}
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-gray-400">
+                            Raw JSON
+                          </p>
+                          {renderJsonValue(routeResponse)}
                         </div>
                       </div>
                     )}
@@ -1449,7 +1548,12 @@ export function UserAccessConsole() {
                           <Button
                             type="button"
                             variant="ghost"
-                            onClick={() => setRouteToken(newTokenSecret)}
+                            onClick={() => {
+                              const newestToken = tokens[tokens.length - 1]
+                              if (newestToken?.id) {
+                                setSelectedRouteTokenId(newestToken.id)
+                              }
+                            }}
                           >
                             Use in Route
                           </Button>
