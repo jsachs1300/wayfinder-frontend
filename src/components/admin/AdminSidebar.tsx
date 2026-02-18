@@ -7,6 +7,7 @@ import {
   Gauge,
   Users,
   KeyRound,
+  WandSparkles,
   Database,
   Layers,
   Server,
@@ -17,8 +18,9 @@ const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: Gauge },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/tokens', label: 'Tokens', icon: KeyRound },
+  { href: '/admin/tokens#default-token-profile', label: 'Default Token Profile', icon: WandSparkles },
   { href: '/admin/knowledge', label: 'Knowledge', icon: Database },
-  { href: '/admin/models', label: 'Models', icon: Layers },
+  { href: '/admin/registry', label: 'Registry', icon: Layers },
   { href: '/admin/cache', label: 'Cache', icon: Server },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ]

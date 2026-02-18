@@ -1,11 +1,12 @@
 'use client'
 
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { clearSession, setSession } from '@/lib/sessionStore'
+import { RegistryModel, UserRegistryResponse } from '@/types/registry'
 import {
   CheckCircle2,
   Copy,
@@ -152,6 +153,8 @@ export function UserAccessConsole() {
   const [tokenName, setTokenName] = useState('')
   const [eligibleModels, setEligibleModels] = useState<string[]>([])
   const [modelInput, setModelInput] = useState('')
+  const [registryModels, setRegistryModels] = useState<RegistryModel[]>([])
+  const [isRegistryLoading, setIsRegistryLoading] = useState(false)
   const [createMessage, setCreateMessage] = useState('')
 
   const [copyLabel, setCopyLabel] = useState('')
@@ -188,6 +191,68 @@ export function UserAccessConsole() {
       window.clearTimeout(hideTimeout)
     }
   }, [loginStatus])
+
+  useEffect(() => {
+    if (!sessionToken) {
+      setRegistryModels([])
+      return
+    }
+
+    const loadRegistry = async () => {
+      setIsRegistryLoading(true)
+      try {
+        const response = await fetch(apiUrl('/api/registry'), {
+          headers: { 'X-Session-Token': sessionToken },
+        })
+        const data = (await response.json().catch(() => null)) as UserRegistryResponse | null
+        if (!response.ok || !data) {
+          setRegistryModels([])
+          return
+        }
+        setRegistryModels(data.models || [])
+      } catch {
+        setRegistryModels([])
+      } finally {
+        setIsRegistryLoading(false)
+      }
+    }
+
+    loadRegistry()
+  }, [sessionToken])
+
+  const validRegistryModels = useMemo(
+    () =>
+      registryModels.filter(
+        (model) => model.available !== false && model.status !== 'disabled'
+      ),
+    [registryModels]
+  )
+
+  const validRegistryMap = useMemo(() => {
+    const map = new Map<string, RegistryModel>()
+    validRegistryModels.forEach((model) => {
+      map.set(model.id, model)
+    })
+    return map
+  }, [validRegistryModels])
+
+  const modelSuggestions = useMemo(() => {
+    const query = modelInput.trim().toLowerCase()
+    if (!query) return []
+    return validRegistryModels
+      .filter((model) => {
+        if (eligibleModels.includes(model.id)) return false
+        const haystack = [
+          model.id,
+          typeof model.display_name === 'string' ? model.display_name : '',
+          typeof model.provider === 'string' ? model.provider : '',
+        ]
+          .join(' ')
+          .toLowerCase()
+        return haystack.includes(query)
+      })
+      .slice(0, 8)
+  }, [modelInput, validRegistryModels, eligibleModels])
 
   const handleCopy = async (value: string, label: string) => {
     try {
@@ -444,8 +509,20 @@ export function UserAccessConsole() {
   const addModel = (value: string) => {
     const cleaned = value.trim().replace(/,$/, '')
     if (!cleaned) return
+    const matched = validRegistryMap.get(cleaned)
+    if (!matched) {
+      setCreateMessage(
+        'Model not found in the active registry. Add it in /console/registry or choose a suggested model.'
+      )
+      return
+    }
+    if (matched.available === false || matched.status === 'disabled') {
+      setCreateMessage('Model is not currently available for token eligibility.')
+      return
+    }
     setEligibleModels((prev) => {
       if (prev.includes(cleaned)) return prev
+      setCreateMessage('')
       return [...prev, cleaned]
     })
   }
@@ -469,6 +546,11 @@ export function UserAccessConsole() {
     setEligibleModels((prev) => prev.filter((item) => item !== value))
   }
 
+  const applySuggestedModel = (modelId: string) => {
+    addModel(modelId)
+    setModelInput('')
+  }
+
   const handleCreateToken = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setCreateMessage('')
@@ -478,8 +560,11 @@ export function UserAccessConsole() {
       return
     }
 
-    if (eligibleModels.length === 0) {
-      setCreateMessage('Add at least one eligible model.')
+    const invalidModels = eligibleModels.filter((modelId) => !validRegistryMap.has(modelId))
+    if (invalidModels.length > 0) {
+      setCreateMessage(
+        `These models are not currently eligible: ${invalidModels.join(', ')}. Update your selection.`
+      )
       return
     }
 
@@ -496,7 +581,7 @@ export function UserAccessConsole() {
           'X-Session-Token': sessionToken,
         },
         body: JSON.stringify({
-          eligible_models: eligibleModels,
+          eligible_models: eligibleModels.length > 0 ? eligibleModels : undefined,
           name: tokenName.trim() || undefined,
         }),
       }
@@ -966,7 +1051,13 @@ export function UserAccessConsole() {
                                       </span>
                                     ))
                                   ) : (
-                                    <span className="text-xs text-slate-500">No models listed</span>
+                                    <span className="text-xs text-slate-500">
+                                      Resolved from the default-token profile.
+                                      {' '}
+                                      <Link href="/console/registry" className="text-brand-600 hover:underline">
+                                        Open registry
+                                      </Link>
+                                    </span>
                                   )}
                                 </p>
                               </div>
@@ -1226,8 +1317,8 @@ export function UserAccessConsole() {
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Create token</h3>
                   <span className="text-xs text-slate-500 dark:text-gray-400">
                     Immutable configuration
-                    </span>
-                  </div>
+                  </span>
+                </div>
 
                   <form onSubmit={handleCreateToken} className="mt-4 space-y-4">
                     <div>
@@ -1245,9 +1336,14 @@ export function UserAccessConsole() {
                     </div>
 
                     <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                      Eligible models
-                      </label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                          Eligible models
+                        </label>
+                        <Link href="/console/registry" className="text-xs text-brand-600 hover:underline">
+                          Manage registry
+                        </Link>
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200 dark:border-gray-700 dark:bg-gray-950">
                         {eligibleModels.map((model) => (
                           <span
@@ -1274,15 +1370,38 @@ export function UserAccessConsole() {
                           className="min-w-[140px] flex-1 bg-transparent text-gray-900 outline-none dark:text-white"
                         />
                       </div>
+                      {modelSuggestions.length > 0 && (
+                        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+                          {modelSuggestions.map((model) => (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => applySuggestedModel(model.id)}
+                              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-gray-800"
+                            >
+                              <span className="font-medium text-gray-900 dark:text-white">{model.id}</span>
+                              <span className="text-slate-500">
+                                {typeof model.display_name === 'string' ? model.display_name : model.provider || '—'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
-                      Press Enter or comma to add multiple models. This list is locked after creation.
+                        Press Enter or comma to add valid models. Leave blank to use the default-token profile list.
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-gray-400">
+                        {isRegistryLoading
+                          ? 'Loading registry...'
+                          : `${validRegistryModels.length} active models available for selection.`}
                       </p>
                     </div>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
                       <p className="flex items-center gap-2 font-semibold text-slate-700 dark:text-gray-200">
                         <Lock className="h-4 w-4" />
-                      Eligible model lists cannot be edited later.
+                        Eligible model lists cannot be edited later.
                       </p>
                     </div>
 
@@ -1352,6 +1471,9 @@ export function UserAccessConsole() {
               </div>
 
               <div className="mt-8 text-right text-xs text-slate-500">
+                <Link href="/console/registry" className="mr-4 hover:text-brand-600">
+                  Registry
+                </Link>
                 <Link href="/admin-access" className="hover:text-brand-600">
                   Admin
                 </Link>
