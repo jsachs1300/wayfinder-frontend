@@ -183,18 +183,20 @@ export function UserAccessConsole() {
 
   const logRequest = (label: string, url: string, options: RequestInit) => {
     if (process.env.NODE_ENV === 'production') return
-    const headers = options.headers instanceof Headers
-      ? Object.fromEntries(options.headers.entries())
-      : (options.headers as Record<string, string> | undefined)
-    if (headers) {
-      Object.keys(headers).forEach((key) => {
+    const headerEntries = new Headers(options.headers || undefined)
+    const redactedHeaders = Object.fromEntries(headerEntries.entries())
+    Object.keys(redactedHeaders).forEach((key) => {
         if (key.toLowerCase().includes('token')) {
-          headers[key] = '[redacted]'
+        redactedHeaders[key] = '[redacted]'
         }
       })
-    }
     const body = typeof options.body === 'string' ? options.body : undefined
-    console.info(`[console:${label}]`, { url, method: options.method, headers, body })
+    console.info(`[console:${label}]`, {
+      url,
+      method: options.method,
+      headers: redactedHeaders,
+      body,
+    })
   }
   const [activeTab, setActiveTab] = useState<ActiveTab>('signup')
   const [signupStatus, setSignupStatus] = useState<SignupStatus>('idle')
