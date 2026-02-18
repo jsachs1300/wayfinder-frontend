@@ -6,10 +6,10 @@ const buildProxyUrl = (pathname: string, search: string) => {
     return null
   }
   const base = stripTrailingSlash(baseUrl)
-  const normalizedPath =
-    base.endsWith('/api') && pathname.startsWith('/api/')
-      ? pathname.slice(4)
-      : pathname
+  const isApiPath = pathname.startsWith('/api/')
+  const isAdminApiPath = /^\/api\/admin(?:\/|$)/.test(pathname)
+  const shouldStripApiPrefix = (base.endsWith('/api') && isApiPath) || (!base.endsWith('/api') && isAdminApiPath)
+  const normalizedPath = shouldStripApiPrefix ? pathname.slice(4) : pathname
   return `${base}${normalizedPath}${search}`
 }
 
