@@ -667,6 +667,7 @@ export function UserAccessConsole() {
       setRotatedTokenSecrets((prev) => ({ ...prev, [token.id]: data.token as string }))
       setTokenSecretsById((prev) => ({ ...prev, [token.id]: data.token as string }))
       setSelectedRouteTokenId(token.id)
+      setExpandedTokenId(token.id)
       setTokenStatus('success')
     } catch {
       setTokenMessage('Unable to rotate token. Please try again.')
@@ -1181,7 +1182,15 @@ export function UserAccessConsole() {
                             Standard
                           </span>
                         </div>
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => rotateToken(token)}
+                            disabled={tokenStatus === 'loading'}
+                          >
+                            Rotate
+                          </Button>
                           <Button
                             type="button"
                             variant="ghost"
@@ -1195,34 +1204,24 @@ export function UserAccessConsole() {
                         </div>
                         {expandedTokenId === token.id && (
                           <div className="md:col-span-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <p className="text-xs uppercase text-slate-500">Eligible models</p>
-                                <p className="mt-2 flex flex-wrap gap-2">
-                                  {(token.eligible_models || []).length ? (
-                                    token.eligible_models?.map((model) => (
-                                      <span
-                                        key={model}
-                                        className="rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700"
-                                      >
-                                        {model}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-slate-500">
-                                      Resolved from the default-token profile.
+                            <div>
+                              <p className="text-xs uppercase text-slate-500">Eligible models</p>
+                              <p className="mt-2 flex flex-wrap gap-2">
+                                {(token.eligible_models || []).length ? (
+                                  token.eligible_models?.map((model) => (
+                                    <span
+                                      key={model}
+                                      className="rounded-full bg-brand-100 px-3 py-1 text-xs font-semibold text-brand-700"
+                                    >
+                                      {model}
                                     </span>
-                                  )}
-                                </p>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                onClick={() => rotateToken(token)}
-                                disabled={tokenStatus === 'loading'}
-                              >
-                                Rotate token
-                              </Button>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-slate-500">
+                                    Resolved from the default-token profile.
+                                  </span>
+                                )}
+                              </p>
                             </div>
                             {rotatedTokenSecrets[token.id] && (
                               <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
