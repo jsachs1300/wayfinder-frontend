@@ -523,7 +523,7 @@ export function UserAccessConsole() {
     const matched = validRegistryMap.get(cleaned)
     if (!matched) {
       setCreateMessage(
-        'Model not found in the active registry. Add it in /console/registry or choose a suggested model.'
+        'Model not found in the active registry. Choose a suggested model or refresh your session.'
       )
       return
     }
@@ -1064,10 +1064,6 @@ export function UserAccessConsole() {
                                   ) : (
                                     <span className="text-xs text-slate-500">
                                       Resolved from the default-token profile.
-                                      {' '}
-                                      <Link href="/console/registry" className="text-brand-600 hover:underline">
-                                        Open registry
-                                      </Link>
                                     </span>
                                   )}
                                 </p>
@@ -1351,9 +1347,9 @@ export function UserAccessConsole() {
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                           Eligible models
                         </label>
-                        <Link href="/console/registry" className="text-xs text-brand-600 hover:underline">
-                          Manage registry
-                        </Link>
+                        <span className="text-xs text-slate-500 dark:text-gray-400">
+                          Registry-aware validation
+                        </span>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-200 dark:border-gray-700 dark:bg-gray-950">
                         {eligibleModels.map((model) => (
@@ -1482,9 +1478,6 @@ export function UserAccessConsole() {
               </div>
 
               <div className="mt-8 text-right text-xs text-slate-500">
-                <Link href="/console/registry" className="mr-4 hover:text-brand-600">
-                  Registry
-                </Link>
                 <Link href="/admin-access" className="hover:text-brand-600">
                   Admin
                 </Link>
