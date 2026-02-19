@@ -1,7 +1,8 @@
 'use client'
 
-import { FormEvent, KeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Container } from '@/components/layout/Container'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
@@ -28,16 +29,50 @@ type TokenActionStatus = 'idle' | 'loading' | 'success' | 'error'
 
 type RouteStatus = 'idle' | 'loading' | 'success' | 'error'
 
+type RegistryMode = 'augment' | 'override'
+
 type RegistryModel = {
   id: string
   provider?: string
   display_name?: string
+  description?: string
+  cost_tier?: string
+  speed_tier?: string
+  context_window?: number
+  max_output_tokens?: number
   available?: boolean
   status?: string
+  global_eligible?: boolean
+  source?: string
+  updated_at?: string
 }
 
 type UserRegistryResponse = {
+  registry_mode?: RegistryMode
   models?: RegistryModel[]
+}
+
+type RegistryModeResponse = {
+  registry_mode?: RegistryMode
+  message?: string
+}
+
+type RegistryMutationResponse = {
+  model?: RegistryModel
+  message?: string
+}
+
+type RegistryDraft = {
+  id: string
+  provider: string
+  display_name: string
+  description: string
+  cost_tier: string
+  speed_tier: string
+  context_window: string
+  max_output_tokens: string
+  available: boolean
+  status: string
 }
 
 type UserProfile = {
@@ -91,6 +126,8 @@ type RouteResponse = {
   from_cache?: boolean
 }
 
+type ConsoleView = 'dashboard' | 'route' | 'create' | 'registry'
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const formatDate = (value?: string | null) => {
@@ -103,13 +140,50 @@ const formatDate = (value?: string | null) => {
   }).format(parsed)
 }
 
-const extractTokenSecrets = (tokenList: TokenMeta[]) => {
-  return tokenList.reduce<Record<string, string>>((acc, token) => {
-    if (typeof token.token === 'string' && token.token.trim()) {
-      acc[token.id] = token.token.trim()
-    }
-    return acc
-  }, {})
+const createEmptyRegistryDraft = (): RegistryDraft => ({
+  id: '',
+  provider: '',
+  display_name: '',
+  description: '',
+  cost_tier: '',
+  speed_tier: '',
+  context_window: '',
+  max_output_tokens: '',
+  available: true,
+  status: 'active',
+})
+
+const sortRegistryModels = (models: RegistryModel[]) => {
+  return [...models].sort((a, b) => {
+    const aSystem = a.source === 'system_base' ? 1 : 0
+    const bSystem = b.source === 'system_base' ? 1 : 0
+    if (aSystem !== bSystem) return aSystem - bSystem
+    return a.id.localeCompare(b.id)
+  })
+}
+
+const extractRegistryModels = (data: unknown): RegistryModel[] => {
+  if (!data || typeof data !== 'object') return []
+  const candidate = data as {
+    models?: unknown
+    registry?: { models?: unknown }
+  }
+  const raw =
+    candidate.models !== undefined
+      ? candidate.models
+      : candidate.registry?.models
+
+  if (Array.isArray(raw)) {
+    return raw.filter((item): item is RegistryModel => {
+      return Boolean(item && typeof item === 'object' && typeof (item as RegistryModel).id === 'string')
+    })
+  }
+  if (raw && typeof raw === 'object') {
+    return Object.values(raw).filter((item): item is RegistryModel => {
+      return Boolean(item && typeof item === 'object' && typeof (item as RegistryModel).id === 'string')
+    })
+  }
+  return []
 }
 
 const renderJsonValue = (value: unknown, depth = 0): ReactNode => {
@@ -176,7 +250,9 @@ const renderJsonValue = (value: unknown, depth = 0): ReactNode => {
   return <span className="text-slate-500 dark:text-gray-400">null</span>
 }
 
-export function UserAccessConsole() {
+export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }) {
+  const router = useRouter()
+
   const apiUrl = (path: string) => {
     return path.startsWith('/') ? path : `/${path}`
   }
@@ -216,10 +292,8 @@ export function UserAccessConsole() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetMessage, setResetMessage] = useState('')
 
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const [sessionToken, setSessionToken] = useState<string | null>(() => getSession()?.token || null)
   const [tokens, setTokens] = useState<TokenMeta[]>([])
-  const [tokenSecretsById, setTokenSecretsById] = useState<Record<string, string>>({})
   const [newTokenSecret, setNewTokenSecret] = useState<string | null>(null)
   const [newTokenModels, setNewTokenModels] = useState<string[]>([])
   const [expandedTokenId, setExpandedTokenId] = useState<string | null>(null)
@@ -229,6 +303,7 @@ export function UserAccessConsole() {
   const [routePrompt, setRoutePrompt] = useState('')
   const [routePreferModel, setRoutePreferModel] = useState('')
   const [routeRouterModel, setRouteRouterModel] = useState('consensus')
+  const [requestedRouteTokenId, setRequestedRouteTokenId] = useState<string | null>(null)
   const [routeStatus, setRouteStatus] = useState<RouteStatus>('idle')
   const [routeMessage, setRouteMessage] = useState('')
   const [routeResponse, setRouteResponse] = useState<RouteResponse | null>(null)
@@ -240,6 +315,11 @@ export function UserAccessConsole() {
   const [eligibleModels, setEligibleModels] = useState<string[]>([])
   const [modelInput, setModelInput] = useState('')
   const [registryModels, setRegistryModels] = useState<RegistryModel[]>([])
+  const [registryMode, setRegistryMode] = useState<RegistryMode>('augment')
+  const [registryStatus, setRegistryStatus] = useState<TokenActionStatus>('idle')
+  const [registryMessage, setRegistryMessage] = useState('')
+  const [registryDraft, setRegistryDraft] = useState<RegistryDraft>(createEmptyRegistryDraft())
+  const [editingRegistryModelId, setEditingRegistryModelId] = useState<string | null>(null)
   const [isRegistryLoading, setIsRegistryLoading] = useState(false)
   const [createMessage, setCreateMessage] = useState('')
 
@@ -253,6 +333,18 @@ export function UserAccessConsole() {
     const token = getSession()?.token || sessionToken
     return typeof token === 'string' ? token.trim() : ''
   }
+
+  const openRoutePlayground = useCallback(
+    (tokenId?: string) => {
+      const cleaned = typeof tokenId === 'string' ? tokenId.trim() : ''
+      if (cleaned) {
+        router.push(`/console/route?token_id=${encodeURIComponent(cleaned)}`)
+        return
+      }
+      router.push('/console/route')
+    },
+    [router]
+  )
 
   useEffect(() => {
     setSessionToken(getSession()?.token || null)
@@ -274,7 +366,13 @@ export function UserAccessConsole() {
     if (params.get('login')) {
       setActiveTab('login')
     }
-  }, [])
+    const routeTokenId = params.get('token_id')
+    if (view === 'route' && routeTokenId && routeTokenId.trim()) {
+      setRequestedRouteTokenId(routeTokenId.trim())
+      return
+    }
+    setRequestedRouteTokenId(null)
+  }, [view])
 
   useEffect(() => {
     if (loginStatus !== 'success') return
@@ -291,33 +389,43 @@ export function UserAccessConsole() {
     }
   }, [loginStatus])
 
+  const refreshRegistry = useCallback(async () => {
+    const activeToken = getSession()?.token || sessionToken
+    const authToken = typeof activeToken === 'string' ? activeToken.trim() : ''
+    if (!authToken) {
+      setRegistryModels([])
+      return
+    }
+
+    setIsRegistryLoading(true)
+    try {
+      const url = apiUrl('/api/registry')
+      const options: RequestInit = {
+        headers: { 'X-Session-Token': authToken },
+      }
+      logRequest('registry:list', url, options)
+      const response = await fetch(url, options)
+      const data = (await response.json().catch(() => null)) as UserRegistryResponse | null
+      if (!response.ok || !data) {
+        setRegistryModels([])
+        return
+      }
+      setRegistryMode(data.registry_mode === 'override' ? 'override' : 'augment')
+      setRegistryModels(sortRegistryModels(extractRegistryModels(data)))
+    } catch {
+      setRegistryModels([])
+    } finally {
+      setIsRegistryLoading(false)
+    }
+  }, [sessionToken])
+
   useEffect(() => {
     if (!sessionToken) {
       setRegistryModels([])
       return
     }
-
-    const loadRegistry = async () => {
-      setIsRegistryLoading(true)
-      try {
-        const response = await fetch(apiUrl('/api/registry'), {
-          headers: { 'X-Session-Token': sessionToken },
-        })
-        const data = (await response.json().catch(() => null)) as UserRegistryResponse | null
-        if (!response.ok || !data) {
-          setRegistryModels([])
-          return
-        }
-        setRegistryModels(data.models || [])
-      } catch {
-        setRegistryModels([])
-      } finally {
-        setIsRegistryLoading(false)
-      }
-    }
-
-    loadRegistry()
-  }, [sessionToken])
+    refreshRegistry()
+  }, [refreshRegistry, sessionToken])
 
   const validRegistryModels = useMemo(
     () =>
@@ -367,11 +475,6 @@ export function UserAccessConsole() {
     [activeRouteTokens, selectedRouteTokenId]
   )
 
-  const selectedRouteTokenSecret = useMemo(
-    () => tokenSecretsById[selectedRouteTokenId] || '',
-    [selectedRouteTokenId, tokenSecretsById]
-  )
-
   const selectedRouteEligibleModels = useMemo(
     () => selectedRouteToken?.eligible_models || [],
     [selectedRouteToken]
@@ -383,6 +486,13 @@ export function UserAccessConsole() {
       setRoutePreferModel('')
       return
     }
+    if (requestedRouteTokenId) {
+      if (activeRouteTokens.some((token) => token.id === requestedRouteTokenId)) {
+        setSelectedRouteTokenId(requestedRouteTokenId)
+        setRequestedRouteTokenId(null)
+        return
+      }
+    }
     const firstActiveTokenId = activeRouteTokens[0]?.id
     if (!firstActiveTokenId) return
     setSelectedRouteTokenId((prev) =>
@@ -390,7 +500,7 @@ export function UserAccessConsole() {
         ? prev
         : firstActiveTokenId
     )
-  }, [activeRouteTokens])
+  }, [activeRouteTokens, requestedRouteTokenId])
 
   useEffect(() => {
     if (!routePreferModel) return
@@ -494,12 +604,10 @@ export function UserAccessConsole() {
         return
       }
 
-      setUserProfile(data.user)
       setSessionToken(data.session_token)
       setSession({ token: data.session_token, isAdmin: false })
       const nextTokens = data.tokens || []
       setTokens(nextTokens)
-      setTokenSecretsById((prev) => ({ ...prev, ...extractTokenSecrets(nextTokens) }))
       setLoginStatus('success')
     } catch {
       setLoginMessage('Something went wrong. Please try again.')
@@ -529,8 +637,9 @@ export function UserAccessConsole() {
   }
 
 
-  const refreshTokens = async () => {
-    const authToken = getActiveSessionToken()
+  const refreshTokens = useCallback(async () => {
+    const nextSessionToken = getSession()?.token || sessionToken
+    const authToken = typeof nextSessionToken === 'string' ? nextSessionToken.trim() : ''
     if (!authToken) {
       setTokenMessage('Sign in to load tokens.')
       return
@@ -559,13 +668,17 @@ export function UserAccessConsole() {
 
       const nextTokens = data.tokens || []
       setTokens(nextTokens)
-      setTokenSecretsById((prev) => ({ ...prev, ...extractTokenSecrets(nextTokens) }))
       setTokenStatus('success')
     } catch {
       setTokenMessage('Unable to load tokens. Check the token and try again.')
       setTokenStatus('error')
     }
-  }
+  }, [sessionToken])
+
+  useEffect(() => {
+    if (!sessionToken) return
+    refreshTokens()
+  }, [refreshTokens, sessionToken])
 
   const handleLogout = async () => {
     const authToken = getActiveSessionToken()
@@ -580,9 +693,7 @@ export function UserAccessConsole() {
     } finally {
       clearSession()
       setSessionToken(null)
-      setUserProfile(null)
       setTokens([])
-      setTokenSecretsById({})
       setSelectedRouteTokenId('')
       setRoutePreferModel('')
       setRouteRouterModel('consensus')
@@ -619,11 +730,6 @@ export function UserAccessConsole() {
       }
 
       setTokens((prev) => prev.filter((item) => item.id !== token.id))
-      setTokenSecretsById((prev) => {
-        const next = { ...prev }
-        delete next[token.id]
-        return next
-      })
       setRotatedTokenSecrets((prev) => {
         const next = { ...prev }
         delete next[token.id]
@@ -665,7 +771,6 @@ export function UserAccessConsole() {
       }
 
       setRotatedTokenSecrets((prev) => ({ ...prev, [token.id]: data.token as string }))
-      setTokenSecretsById((prev) => ({ ...prev, [token.id]: data.token as string }))
       setSelectedRouteTokenId(token.id)
       setExpandedTokenId(token.id)
       setTokenStatus('success')
@@ -720,6 +825,227 @@ export function UserAccessConsole() {
     setModelInput('')
   }
 
+  const updateRegistryDraft = <K extends keyof RegistryDraft>(
+    key: K,
+    value: RegistryDraft[K]
+  ) => {
+    setRegistryDraft((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const resetRegistryDraft = () => {
+    setEditingRegistryModelId(null)
+    setRegistryDraft(createEmptyRegistryDraft())
+  }
+
+  const startEditingRegistryModel = (model: RegistryModel) => {
+    setEditingRegistryModelId(model.id)
+    setRegistryDraft({
+      id: model.id,
+      provider: model.provider || '',
+      display_name: model.display_name || '',
+      description: model.description || '',
+      cost_tier: model.cost_tier || '',
+      speed_tier: model.speed_tier || '',
+      context_window:
+        typeof model.context_window === 'number' ? String(model.context_window) : '',
+      max_output_tokens:
+        typeof model.max_output_tokens === 'number'
+          ? String(model.max_output_tokens)
+          : '',
+      available: model.available !== false,
+      status: model.status || 'active',
+    })
+    setRegistryMessage('')
+  }
+
+  const buildRegistryPayload = (): { payload?: Record<string, unknown>; error?: string } => {
+    const payload: Record<string, unknown> = {
+      available: registryDraft.available,
+    }
+
+    const provider = registryDraft.provider.trim()
+    const displayName = registryDraft.display_name.trim()
+    const description = registryDraft.description.trim()
+    const costTier = registryDraft.cost_tier.trim()
+    const speedTier = registryDraft.speed_tier.trim()
+    const status = registryDraft.status.trim()
+    const contextWindowValue = registryDraft.context_window.trim()
+    const maxOutputTokensValue = registryDraft.max_output_tokens.trim()
+
+    if (provider) payload.provider = provider
+    if (displayName) payload.display_name = displayName
+    if (description) payload.description = description
+    if (costTier) payload.cost_tier = costTier
+    if (speedTier) payload.speed_tier = speedTier
+    if (status) payload.status = status
+
+    if (contextWindowValue) {
+      const parsed = Number(contextWindowValue)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return { error: 'Context window must be a positive number.' }
+      }
+      payload.context_window = Math.round(parsed)
+    }
+
+    if (maxOutputTokensValue) {
+      const parsed = Number(maxOutputTokensValue)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return { error: 'Max output tokens must be a positive number.' }
+      }
+      payload.max_output_tokens = Math.round(parsed)
+    }
+
+    return { payload }
+  }
+
+  const updateRegistryMode = async (nextMode: RegistryMode) => {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
+      setRegistryMessage('Sign in to manage your model registry.')
+      setRegistryStatus('error')
+      return
+    }
+
+    setRegistryStatus('loading')
+    setRegistryMessage('')
+    try {
+      const url = apiUrl('/api/registry/mode')
+      const options: RequestInit = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Token': authToken,
+        },
+        body: JSON.stringify({ mode: nextMode }),
+      }
+      logRequest('registry:mode', url, options)
+      const response = await fetch(url, options)
+      const data = (await response.json().catch(() => null)) as RegistryModeResponse | null
+      if (!response.ok) {
+        setRegistryMessage(data?.message || 'Unable to update registry mode.')
+        setRegistryStatus('error')
+        return
+      }
+      setRegistryMode(data?.registry_mode === 'override' ? 'override' : nextMode)
+      setRegistryMessage(
+        nextMode === 'override'
+          ? 'Registry mode set to override.'
+          : 'Registry mode set to augment.'
+      )
+      setRegistryStatus('success')
+      await refreshRegistry()
+    } catch {
+      setRegistryMessage('Unable to update registry mode.')
+      setRegistryStatus('error')
+    }
+  }
+
+  const saveRegistryModel = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
+      setRegistryMessage('Sign in to manage your model registry.')
+      setRegistryStatus('error')
+      return
+    }
+
+    const modelId = editingRegistryModelId || registryDraft.id.trim()
+    if (!modelId) {
+      setRegistryMessage('Model ID is required.')
+      setRegistryStatus('error')
+      return
+    }
+
+    const built = buildRegistryPayload()
+    if (built.error || !built.payload) {
+      setRegistryMessage(built.error || 'Unable to build registry payload.')
+      setRegistryStatus('error')
+      return
+    }
+
+    const bodyPayload = editingRegistryModelId
+      ? built.payload
+      : { id: modelId, ...built.payload }
+    const endpoint = editingRegistryModelId
+      ? apiUrl(`/api/registry/${encodeURIComponent(modelId)}`)
+      : apiUrl('/api/registry')
+    const method = editingRegistryModelId ? 'PATCH' : 'POST'
+
+    setRegistryStatus('loading')
+    setRegistryMessage('')
+
+    try {
+      const options: RequestInit = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Token': authToken,
+        },
+        body: JSON.stringify(bodyPayload),
+      }
+      logRequest('registry:save', endpoint, options)
+      const response = await fetch(endpoint, options)
+      const data = (await response.json().catch(() => null)) as RegistryMutationResponse | null
+      if (!response.ok) {
+        setRegistryMessage(data?.message || 'Unable to save model metadata.')
+        setRegistryStatus('error')
+        return
+      }
+
+      setRegistryMessage(
+        editingRegistryModelId
+          ? 'Registry model updated.'
+          : 'Model added to your registry.'
+      )
+      setRegistryStatus('success')
+      resetRegistryDraft()
+      await refreshRegistry()
+    } catch {
+      setRegistryMessage('Unable to save model metadata.')
+      setRegistryStatus('error')
+    }
+  }
+
+  const deleteRegistryModel = async (modelId: string) => {
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
+      setRegistryMessage('Sign in to manage your model registry.')
+      setRegistryStatus('error')
+      return
+    }
+    const confirmed = window.confirm('Delete this model overlay from your registry?')
+    if (!confirmed) return
+
+    setRegistryStatus('loading')
+    setRegistryMessage('')
+
+    try {
+      const url = apiUrl(`/api/registry/${encodeURIComponent(modelId)}`)
+      const options: RequestInit = {
+        method: 'DELETE',
+        headers: { 'X-Session-Token': authToken },
+      }
+      logRequest('registry:delete', url, options)
+      const response = await fetch(url, options)
+      const data = (await response.json().catch(() => null)) as RegistryMutationResponse | null
+      if (!response.ok) {
+        setRegistryMessage(data?.message || 'Unable to delete registry model.')
+        setRegistryStatus('error')
+        return
+      }
+
+      if (editingRegistryModelId === modelId) {
+        resetRegistryDraft()
+      }
+      setRegistryMessage('Registry model deleted.')
+      setRegistryStatus('success')
+      await refreshRegistry()
+    } catch {
+      setRegistryMessage('Unable to delete registry model.')
+      setRegistryStatus('error')
+    }
+  }
+
   const handleCreateToken = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setCreateMessage('')
@@ -771,7 +1097,6 @@ export function UserAccessConsole() {
 
       setNewTokenSecret(data.token)
       setNewTokenModels(data.config?.eligible_models || eligibleModels)
-      setTokenSecretsById((prev) => ({ ...prev, [data.id]: data.token }))
       setSelectedRouteTokenId(data.id)
       setTokens((prev) => [
         ...prev,
@@ -802,10 +1127,9 @@ export function UserAccessConsole() {
       setRouteStatus('error')
       return
     }
-    if (!selectedRouteTokenSecret) {
-      setRouteMessage(
-        'Selected token secret is not available in this session. Create or rotate a token, then use it for routing.'
-      )
+    const authToken = getActiveSessionToken()
+    if (!authToken) {
+      setRouteMessage('Session is not active. Sign in again.')
       setRouteStatus('error')
       return
     }
@@ -824,18 +1148,18 @@ export function UserAccessConsole() {
       }
       if (routePreferModel.trim()) payload.prefer_model = routePreferModel.trim()
 
-      const url = '/route'
+      const url = apiUrl(`/api/tokens/${encodeURIComponent(selectedRouteTokenId)}/route`)
       const options: RequestInit = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Wayfinder-Token': selectedRouteTokenSecret,
+          'X-Session-Token': authToken,
         },
         body: JSON.stringify(payload),
       }
-      logRequest('route', url, options)
+      logRequest('tokens:route', url, options)
       const response = await fetch(url, options)
-      const data = (await response.json().catch(() => null)) as RouteResponse | null
+      const data = (await response.json().catch(() => null)) as (RouteResponse & { message?: string }) | null
 
       const rateHeaders: Record<string, string> = {}
       ;['ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset', 'x-request-id'].forEach(
@@ -847,7 +1171,19 @@ export function UserAccessConsole() {
       setRateLimitHeaders(rateHeaders)
 
       if (!response.ok || !data) {
-        setRouteMessage('Unable to route request. Check the token and payload.')
+        if (response.status === 401) {
+          setRouteMessage('Session expired. Sign in again.')
+        } else if (response.status === 403) {
+          setRouteMessage('Selected token is not available for this session.')
+        } else if (response.status === 404) {
+          setRouteMessage('Selected token was not found.')
+        } else if (response.status === 422) {
+          setRouteMessage('Invalid route payload. Check prompt and model options.')
+        } else if (response.status === 429) {
+          setRouteMessage('Rate limit exceeded. Try again shortly.')
+        } else {
+          setRouteMessage(data?.message || 'Unable to route request. Check the token and payload.')
+        }
         setRouteStatus('error')
         return
       }
@@ -859,6 +1195,11 @@ export function UserAccessConsole() {
       setRouteStatus('error')
     }
   }
+
+  const isDashboardView = view === 'dashboard'
+  const isRouteView = view === 'route'
+  const isCreateView = view === 'create'
+  const isRegistryView = view === 'registry'
 
   return (
     <div className="bg-slate-50 dark:bg-gray-950">
@@ -1053,7 +1394,7 @@ export function UserAccessConsole() {
               </div>
             )}
 
-            {userProfile ? (
+            {sessionToken ? (
               <div
                 ref={dashboardRef}
                 className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-gray-800 dark:bg-gray-900"
@@ -1061,33 +1402,71 @@ export function UserAccessConsole() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
-                      Token Dashboard
+                      Console
                     </p>
                     <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-                      Manage token inventory
+                      {isDashboardView
+                        ? 'Manage token inventory'
+                        : isRouteView
+                          ? 'Route Playground'
+                          : isCreateView
+                            ? 'Create token'
+                            : 'Model registry'}
                     </h2>
                   </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="gap-2"
-                  onClick={refreshTokens}
-                  disabled={tokenStatus === 'loading'}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh tokens
-                </Button>
-                {sessionToken && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="text-slate-600 hover:text-slate-800"
-                    onClick={handleLogout}
-                  >
-                    Sign out
-                  </Button>
-                )}
-              </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isDashboardView && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="gap-2"
+                        onClick={refreshTokens}
+                        disabled={tokenStatus === 'loading'}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Refresh tokens
+                      </Button>
+                    )}
+                    {!isDashboardView && (
+                      <Link href="/console">
+                        <Button type="button" variant="secondary">
+                          Token dashboard
+                        </Button>
+                      </Link>
+                    )}
+                    {!isRouteView && (
+                      <Link href="/console/route">
+                        <Button type="button" variant="secondary">
+                          Route playground
+                        </Button>
+                      </Link>
+                    )}
+                    {!isCreateView && (
+                      <Link href="/console/tokens/new">
+                        <Button type="button">
+                          Create token
+                        </Button>
+                      </Link>
+                    )}
+                    {!isRegistryView && (
+                      <Link href="/console/registry">
+                        <Button type="button" variant="secondary">
+                          Model registry
+                        </Button>
+                      </Link>
+                    )}
+                    {sessionToken && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-slate-600 hover:text-slate-800"
+                        onClick={handleLogout}
+                      >
+                        Sign out
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
                 {!sessionToken && (
                   <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
@@ -1122,7 +1501,8 @@ export function UserAccessConsole() {
                   </div>
                 )}
 
-                <div className="mt-8">
+                {isDashboardView && (
+                  <div className="mt-8">
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Token list</h3>
                     <span className="text-xs text-slate-500 dark:text-gray-400">
@@ -1245,12 +1625,7 @@ export function UserAccessConsole() {
                                   <Button
                                     type="button"
                                     variant="ghost"
-                                    onClick={() => {
-                                      const secret = rotatedTokenSecrets[token.id]
-                                      if (secret) {
-                                        setSelectedRouteTokenId(token.id)
-                                      }
-                                    }}
+                                    onClick={() => openRoutePlayground(token.id)}
                                   >
                                     Use in Route
                                   </Button>
@@ -1282,17 +1657,310 @@ export function UserAccessConsole() {
                     {tokenMessage}
                   </p>
                 )}
-              </div>
+                  </div>
+                )}
 
-              <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                {isRegistryView && (
+                  <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">User model registry</h3>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
+                          Manage one personal registry that can augment or override the system registry.
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
+                          Add model IDs free hand with metadata. Saved entries become selectable during token creation.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Mode
+                        </label>
+                        <select
+                          value={registryMode}
+                          onChange={(event) => updateRegistryMode(event.target.value as RegistryMode)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                          disabled={registryStatus === 'loading' || isRegistryLoading}
+                        >
+                          <option value="augment">augment</option>
+                          <option value="override">override</option>
+                        </select>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={refreshRegistry}
+                          disabled={isRegistryLoading || registryStatus === 'loading'}
+                        >
+                          Refresh registry
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
+                      {registryMode === 'augment'
+                        ? 'Augment mode combines system models with your user-defined entries.'
+                        : 'Override mode prioritizes your user registry for the effective model set.'}
+                    </div>
+
+                    {registryMessage && (
+                      <p
+                        className={cn(
+                          'mt-3 text-xs',
+                          registryStatus === 'error'
+                            ? 'text-red-500'
+                            : registryStatus === 'success'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-slate-500'
+                        )}
+                        aria-live="polite"
+                      >
+                        {registryMessage}
+                      </p>
+                    )}
+
+                    <form onSubmit={saveRegistryModel} className="mt-6 space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-id">
+                            Model ID
+                          </label>
+                          <input
+                            id="registry-id"
+                            type="text"
+                            value={registryDraft.id}
+                            onChange={(event) => updateRegistryDraft('id', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 disabled:bg-slate-100 dark:border-gray-700 dark:bg-gray-950 dark:text-white dark:disabled:bg-gray-800"
+                            placeholder="my-custom-model-v1"
+                            required
+                            disabled={Boolean(editingRegistryModelId)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-display-name">
+                            Display name
+                          </label>
+                          <input
+                            id="registry-display-name"
+                            type="text"
+                            value={registryDraft.display_name}
+                            onChange={(event) => updateRegistryDraft('display_name', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="My custom model"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-provider">
+                            Provider
+                          </label>
+                          <input
+                            id="registry-provider"
+                            type="text"
+                            value={registryDraft.provider}
+                            onChange={(event) => updateRegistryDraft('provider', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="custom"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-status">
+                            Status
+                          </label>
+                          <input
+                            id="registry-status"
+                            type="text"
+                            value={registryDraft.status}
+                            onChange={(event) => updateRegistryDraft('status', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="active"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-description">
+                          Description
+                        </label>
+                        <textarea
+                          id="registry-description"
+                          value={registryDraft.description}
+                          onChange={(event) => updateRegistryDraft('description', event.target.value)}
+                          className="mt-2 min-h-[84px] w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                          placeholder="Metadata note for this model entry."
+                        />
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-cost-tier">
+                            Cost tier
+                          </label>
+                          <input
+                            id="registry-cost-tier"
+                            type="text"
+                            value={registryDraft.cost_tier}
+                            onChange={(event) => updateRegistryDraft('cost_tier', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="low"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-speed-tier">
+                            Speed tier
+                          </label>
+                          <input
+                            id="registry-speed-tier"
+                            type="text"
+                            value={registryDraft.speed_tier}
+                            onChange={(event) => updateRegistryDraft('speed_tier', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="fast"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-context-window">
+                            Context window
+                          </label>
+                          <input
+                            id="registry-context-window"
+                            type="number"
+                            min={1}
+                            value={registryDraft.context_window}
+                            onChange={(event) => updateRegistryDraft('context_window', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="128000"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-max-output">
+                            Max output tokens
+                          </label>
+                          <input
+                            id="registry-max-output"
+                            type="number"
+                            min={1}
+                            value={registryDraft.max_output_tokens}
+                            onChange={(event) => updateRegistryDraft('max_output_tokens', event.target.value)}
+                            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            placeholder="8192"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-gray-800 dark:bg-gray-950">
+                        <label className="inline-flex items-center gap-2 text-slate-700 dark:text-gray-200">
+                          <input
+                            type="checkbox"
+                            checked={registryDraft.available}
+                            onChange={(event) => updateRegistryDraft('available', event.target.checked)}
+                          />
+                          Available
+                        </label>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="submit" disabled={registryStatus === 'loading'}>
+                          {registryStatus === 'loading'
+                            ? 'Saving...'
+                            : editingRegistryModelId
+                              ? 'Update model'
+                              : 'Add model'}
+                        </Button>
+                        {editingRegistryModelId && (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={resetRegistryDraft}
+                            disabled={registryStatus === 'loading'}
+                          >
+                            Cancel edit
+                          </Button>
+                        )}
+                      </div>
+                    </form>
+
+                    <div className="mt-8">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-base font-semibold text-gray-900 dark:text-white">Effective registry models</h4>
+                        <span className="text-xs text-slate-500 dark:text-gray-400">
+                          {registryModels.length} models
+                        </span>
+                      </div>
+                      {registryModels.length === 0 ? (
+                        <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                          No models in the effective registry yet.
+                        </div>
+                      ) : (
+                        <div className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white text-sm dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900">
+                          {registryModels.map((model) => {
+                            const canDelete = model.source !== 'system_base'
+                            return (
+                              <div key={model.id} className="px-4 py-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-gray-900 dark:text-white">{model.id}</p>
+                                    <p className="text-xs text-slate-500 dark:text-gray-400">
+                                      {model.display_name || 'No display name'}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      onClick={() => startEditingRegistryModel(model)}
+                                      disabled={registryStatus === 'loading'}
+                                    >
+                                      Edit
+                                    </Button>
+                                    {canDelete ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="text-red-600 hover:text-red-700"
+                                        onClick={() => deleteRegistryModel(model.id)}
+                                        disabled={registryStatus === 'loading'}
+                                      >
+                                        Delete
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-slate-400">System model</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="mt-3 grid gap-2 text-xs text-slate-600 dark:text-gray-300 md:grid-cols-3">
+                                  <p>Provider: {model.provider || '—'}</p>
+                                  <p>Status: {model.status || '—'}</p>
+                                  <p>Source: {model.source || '—'}</p>
+                                  <p>Cost tier: {model.cost_tier || '—'}</p>
+                                  <p>Speed tier: {model.speed_tier || '—'}</p>
+                                  <p>Context: {model.context_window ?? '—'}</p>
+                                </div>
+                                {model.description && (
+                                  <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
+                                    {model.description}
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {isRouteView && (
+                  <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Route Playground</h3>
                     <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
-                      Send a prompt to the router using a Wayfinder token. Requests are proxied server-side.
+                      Send a prompt using your session and selected token. Token secrets are not exposed in the browser.
                     </p>
                   </div>
-                  <span className="text-xs text-slate-400">POST /route</span>
+                  <span className="text-xs text-slate-400">POST /api/tokens/:token_id/route</span>
                 </div>
 
                 <form onSubmit={handleRouteRequest} className="mt-6 space-y-4">
@@ -1312,18 +1980,12 @@ export function UserAccessConsole() {
                       {activeRouteTokens.map((token) => (
                         <option key={token.id} value={token.id}>
                           {(token.name || 'Untitled token')} ({token.id})
-                          {tokenSecretsById[token.id] ? '' : ' - secret unavailable'}
                         </option>
                       ))}
                     </select>
                     <p className="mt-2 text-xs text-slate-500 dark:text-gray-400">
                       Choose any active token from your account.
                     </p>
-                    {!selectedRouteTokenSecret && selectedRouteTokenId && (
-                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                        This token secret is not in memory. Create or rotate a token to route from this console session.
-                      </p>
-                    )}
                   </div>
 
                   <div>
@@ -1381,7 +2043,7 @@ export function UserAccessConsole() {
                     <Button
                       type="submit"
                       className="gap-2"
-                      disabled={routeStatus === 'loading' || !selectedRouteTokenId || !selectedRouteTokenSecret}
+                      disabled={routeStatus === 'loading' || !selectedRouteTokenId}
                     >
                       <Send className="h-4 w-4" />
                       {routeStatus === 'loading' ? 'Routing...' : 'Route prompt'}
@@ -1460,9 +2122,11 @@ export function UserAccessConsole() {
                     )}
                   </div>
                 )}
-              </div>
+                  </div>
+                )}
 
-              <div className="mt-10">
+                {isCreateView && (
+                  <div className="mt-10">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Create token</h3>
                   <span className="text-xs text-slate-500 dark:text-gray-400">
@@ -1594,9 +2258,7 @@ export function UserAccessConsole() {
                             variant="ghost"
                             onClick={() => {
                               const newestToken = tokens[tokens.length - 1]
-                              if (newestToken?.id) {
-                                setSelectedRouteTokenId(newestToken.id)
-                              }
+                              openRoutePlayground(newestToken?.id)
                             }}
                           >
                             Use in Route
@@ -1622,8 +2284,9 @@ export function UserAccessConsole() {
                         )}
                       </div>
                     )}
-                </form>
-              </div>
+                  </form>
+                </div>
+                )}
 
               <div className="mt-8 text-right text-xs text-slate-500">
                 <Link href="/admin-access" className="hover:text-brand-600">
@@ -1638,10 +2301,22 @@ export function UserAccessConsole() {
               >
                 <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
                   <KeyRound className="h-4 w-4" />
-                  Login required to view token dashboard
+                  {isDashboardView
+                    ? 'Login required to view token dashboard'
+                    : isRouteView
+                      ? 'Login required to use route playground'
+                      : isCreateView
+                        ? 'Login required to create tokens'
+                        : 'Login required to manage model registry'}
                 </p>
                 <p className="mt-2">
-                  Sign in to access token management.
+                  {isDashboardView
+                    ? 'Sign in to access token management.'
+                    : isRouteView
+                      ? 'Sign in to route prompts with your tokens.'
+                      : isCreateView
+                        ? 'Sign in to create a new API token.'
+                        : 'Sign in to manage your personal model registry.'}
                 </p>
               </div>
             )}
