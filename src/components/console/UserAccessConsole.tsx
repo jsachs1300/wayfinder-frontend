@@ -186,12 +186,6 @@ const extractRegistryModels = (data: unknown): RegistryModel[] => {
   return []
 }
 
-const upsertRegistryModel = (models: RegistryModel[], model: RegistryModel) => {
-  const next = models.filter((item) => item.id !== model.id)
-  next.push(model)
-  return sortRegistryModels(next)
-}
-
 const renderJsonValue = (value: unknown, depth = 0): ReactNode => {
   const indent = { paddingLeft: `${depth * 16}px` }
 
@@ -1006,9 +1000,6 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
       setRegistryStatus('success')
       resetRegistryDraft()
       await refreshRegistry()
-      if (data?.model?.id) {
-        setRegistryModels((prev) => upsertRegistryModel(prev, data.model as RegistryModel))
-      }
     } catch {
       setRegistryMessage('Unable to save model metadata.')
       setRegistryStatus('error')
