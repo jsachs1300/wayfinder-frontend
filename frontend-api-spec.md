@@ -36,6 +36,40 @@ Response (200):
 }
 ```
 
+### GET /llm-spec
+No auth required.
+
+Purpose:
+- Machine-readable integration guide for LLM app builders.
+- Includes auth headers, core/admin endpoint summaries, routing contract, and recommended implementation patterns.
+
+Response (200):
+```json
+{
+  "name": "Wayfinder LLM Integration Spec",
+  "version": "1.0",
+  "auth_headers": [
+    { "header": "X-Wayfinder-Token", "used_for": ["/route", "/feedback"] }
+  ],
+  "core_endpoints": [
+    { "method": "POST", "path": "/route", "auth": "token", "purpose": "Get model routing decision for a prompt" }
+  ],
+  "admin_endpoints": [
+    { "method": "PUT", "path": "/admin/default-token-profile", "auth": "admin", "purpose": "Update default-token model set" }
+  ],
+  "integration_patterns": [
+    { "name": "Chat Orchestrator", "why": "...", "implementation": ["..."] }
+  ]
+}
+```
+
+### GET /llms.txt
+No auth required.
+
+Purpose:
+- Plain-text/LLM-friendly rendering of the same `/llm-spec` content.
+- Best URL to hand directly to a coding assistant for integration guidance.
+
 ---
 
 ## User Registration & Login
@@ -260,9 +294,45 @@ Request:
 ```
 Validation note:
 - `eligible_models` is validated against the effective model registry.
-- If omitted/empty, backend resolves from the current default-token profile (`/admin/default-token-profile`).
+- If omitted/empty, backend defaults to all available registry models.
 - This endpoint creates non-default tokens. The system default token model list is controlled separately by admin via `/admin/default-token-profile`.
 - On invalid model IDs, API returns `400` with `error` like `InvalidModelError` and a detailed `message`.
+
+### POST /api/tokens/:token_id/route
+Headers: `X-Session-Token`
+
+Purpose:
+- Route from frontend Route Playground without requiring token secret access in browser state.
+- Uses selected `token_id` + authenticated user session.
+
+Request body:
+```json
+{
+  "prompt": "Summarize this customer support thread and propose a response",
+  "prefer_model": "gpt-4o-mini",
+  "router_model": "consensus"
+}
+```
+
+Behavior:
+- Validates session token.
+- Validates selected token exists and belongs to session user.
+- Applies same routing logic as `POST /route`:
+  - policy/eligibility checks
+  - router selection/fallback
+  - cache lookup/store behavior
+  - rate limiting and tier quotas
+  - token usage metrics attribution
+
+Success response:
+- Same schema as `POST /route` (`primary`, `alternate`, `request_id`, `router_model_used`, `from_cache`).
+
+Errors:
+- `401` missing/invalid/expired session
+- `403` token not usable for this session
+- `404` token not found
+- `422` invalid route payload
+- `429` rate limited
 
 ### DELETE /api/tokens/:id
 Headers: `X-Session-Token`
@@ -322,9 +392,6 @@ Request:
 ```json
 { "eligible_models": ["gpt-4-turbo"], "environment": "dev" }
 ```
-Validation note:
-- `eligible_models` is validated against the effective model registry.
-- If omitted/empty, backend resolves from the current default-token profile (`/admin/default-token-profile`).
 
 ### GET /admin/tokens/:id
 Headers: `X-Admin-Api-Key`

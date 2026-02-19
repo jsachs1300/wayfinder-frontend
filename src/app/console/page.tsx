@@ -1,5 +1,5 @@
 import { UserAccessConsole } from '@/components/console/UserAccessConsole'
 
 export default function ConsolePage() {
-  return <UserAccessConsole />
+  return <UserAccessConsole view="dashboard" />
 }
