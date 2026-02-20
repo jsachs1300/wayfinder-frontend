@@ -339,8 +339,8 @@ export default function ApiReferencePage() {
           </div>
 
           <div className="flex flex-wrap gap-4 mt-10">
-            <Link href="/#signup">
-              <Button size="lg">Join the waitlist</Button>
+            <Link href="/console?login=1">
+              <Button size="lg">Get started</Button>
             </Link>
             <Link href="/#how-it-works">
               <Button size="lg" variant="secondary">How it works</Button>

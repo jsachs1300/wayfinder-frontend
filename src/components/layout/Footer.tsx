@@ -55,8 +55,8 @@ export function Footer() {
               </h3>
               <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
                 <li>
-                  <a href="#signup" className="hover:text-brand-600 dark:hover:text-brand-400">
-                    Join waitlist
+                  <a href="/console?login=1" className="hover:text-brand-600 dark:hover:text-brand-400">
+                    Get started
                   </a>
                 </li>
                 <li>

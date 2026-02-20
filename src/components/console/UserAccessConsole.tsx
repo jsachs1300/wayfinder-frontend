@@ -129,6 +129,8 @@ type RouteResponse = {
 type ConsoleView = 'dashboard' | 'route' | 'create' | 'registry'
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const COST_TIER_OPTIONS = ['low', 'medium', 'high'] as const
+const SPEED_TIER_OPTIONS = ['fast', 'medium', 'slow'] as const
 
 const formatDate = (value?: string | null) => {
   if (!value) return '—'
@@ -1069,6 +1071,11 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
     setNewTokenModels([])
 
     try {
+      const requiresTokenKnowledgeScope = eligibleModels.some((modelId) => {
+        const model = validRegistryMap.get(modelId)
+        return model?.global_eligible === false
+      })
+
       const url = apiUrl('/api/tokens')
       const options: RequestInit = {
         method: 'POST',
@@ -1078,6 +1085,7 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
         },
         body: JSON.stringify({
           eligible_models: eligibleModels.length > 0 ? eligibleModels : undefined,
+          knowledge_scope: requiresTokenKnowledgeScope ? 'token' : undefined,
           name: tokenName.trim() || undefined,
         }),
       }
@@ -1585,7 +1593,17 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
                         {expandedTokenId === token.id && (
                           <div className="md:col-span-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-300">
                             <div>
-                              <p className="text-xs uppercase text-slate-500">Eligible models</p>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs uppercase text-slate-500">Eligible models</p>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => openRoutePlayground(token.id)}
+                                >
+                                  Route
+                                </Button>
+                              </div>
                               <p className="mt-2 flex flex-wrap gap-2">
                                 {(token.eligible_models || []).length ? (
                                   token.eligible_models?.map((model) => (
@@ -1797,27 +1815,49 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-cost-tier">
                             Cost tier
                           </label>
-                          <input
+                          <select
                             id="registry-cost-tier"
-                            type="text"
                             value={registryDraft.cost_tier}
                             onChange={(event) => updateRegistryDraft('cost_tier', event.target.value)}
                             className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            placeholder="low"
-                          />
+                          >
+                            <option value="">Select cost tier</option>
+                            {COST_TIER_OPTIONS.map((tier) => (
+                              <option key={tier} value={tier}>
+                                {tier}
+                              </option>
+                            ))}
+                            {registryDraft.cost_tier &&
+                              !COST_TIER_OPTIONS.includes(registryDraft.cost_tier as (typeof COST_TIER_OPTIONS)[number]) && (
+                                <option value={registryDraft.cost_tier}>
+                                  {registryDraft.cost_tier} (current)
+                                </option>
+                              )}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-speed-tier">
                             Speed tier
                           </label>
-                          <input
+                          <select
                             id="registry-speed-tier"
-                            type="text"
                             value={registryDraft.speed_tier}
                             onChange={(event) => updateRegistryDraft('speed_tier', event.target.value)}
                             className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-gray-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            placeholder="fast"
-                          />
+                          >
+                            <option value="">Select speed tier</option>
+                            {SPEED_TIER_OPTIONS.map((tier) => (
+                              <option key={tier} value={tier}>
+                                {tier}
+                              </option>
+                            ))}
+                            {registryDraft.speed_tier &&
+                              !SPEED_TIER_OPTIONS.includes(registryDraft.speed_tier as (typeof SPEED_TIER_OPTIONS)[number]) && (
+                                <option value={registryDraft.speed_tier}>
+                                  {registryDraft.speed_tier} (current)
+                                </option>
+                              )}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="registry-context-window">
@@ -2297,27 +2337,34 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
             ) : (
               <div
                 ref={dashboardRef}
-                className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400"
+                className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900"
               >
-                <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-                  <KeyRound className="h-4 w-4" />
-                  {isDashboardView
-                    ? 'Login required to view token dashboard'
-                    : isRouteView
-                      ? 'Login required to use route playground'
-                      : isCreateView
-                        ? 'Login required to create tokens'
-                        : 'Login required to manage model registry'}
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">
+                  Why Wayfinder
                 </p>
-                <p className="mt-2">
-                  {isDashboardView
-                    ? 'Sign in to access token management.'
-                    : isRouteView
-                      ? 'Sign in to route prompts with your tokens.'
-                      : isCreateView
-                        ? 'Sign in to create a new API token.'
-                        : 'Sign in to manage your personal model registry.'}
+                <h3 className="mt-3 text-2xl font-semibold text-gray-900 dark:text-white">
+                  Production-ready LLM routing with policy control
+                </h3>
+                <p className="mt-3 text-sm text-slate-600 dark:text-gray-300">
+                  Route prompts across providers with deterministic token policy, explainable
+                  primary and backup picks, and user-level registry overlays.
                 </p>
+                <div className="mt-6 space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-200">
+                    Per-token eligible model controls
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-200">
+                    Real-time routing outcomes with primary and alternate selections
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 dark:border-gray-700 dark:bg-gray-950/60 dark:text-gray-200">
+                    Personal model registry with augment or override modes
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <Link href="/api-reference" className="text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">
+                    Explore API reference
+                  </Link>
+                </div>
               </div>
             )}
           </div>
