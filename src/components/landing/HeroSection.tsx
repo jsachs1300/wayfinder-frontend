@@ -4,6 +4,7 @@ import { Container } from '../layout/Container'
 import { Button } from '../ui/Button'
 import { AnimatedAPIDemo } from './AnimatedAPIDemo'
 import { ArrowRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 const scrollToId = (id: string) => {
   const target = document.getElementById(id)
@@ -13,6 +14,8 @@ const scrollToId = (id: string) => {
 }
 
 export function HeroSection() {
+  const router = useRouter()
+
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-white to-gray-50 dark:from-gray-950 dark:to-gray-900 py-16 md:py-24">
       {/* Background decoration */}
@@ -34,8 +37,8 @@ export function HeroSection() {
             and semantic caching. Reduce costs while maintaining quality.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="group" onClick={() => scrollToId('signup')}>
-              Notify me
+            <Button size="lg" className="group" onClick={() => router.push('/console?login=1')}>
+              Get started
               <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Button>
             <Button size="lg" variant="secondary" onClick={() => scrollToId('how-it-works')}>

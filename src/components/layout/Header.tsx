@@ -5,24 +5,13 @@ import { Button } from '../ui/Button'
 import { Moon, Sun, Compass } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export function Header() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const pathname = usePathname()
   const router = useRouter()
-  const scrollToId = (id: string) => {
-    if (pathname !== '/') {
-      router.push(`/#${id}`)
-      return
-    }
-    const target = document.getElementById(id)
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }
 
   useEffect(() => {
     setMounted(true)
@@ -64,8 +53,8 @@ export function Header() {
             >
               API Reference
             </Link>
-            <Button variant="primary" size="sm" onClick={() => scrollToId('signup')}>
-              Notify me
+            <Button variant="primary" size="sm" onClick={() => router.push('/console?login=1')}>
+              Get started
             </Button>
             {mounted && (
               <button
