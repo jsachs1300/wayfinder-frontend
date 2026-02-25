@@ -7,14 +7,20 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { getSession, subscribeSession } from '@/lib/sessionStore'
 
 export function Header() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [hasSession, setHasSession] = useState(() => Boolean(getSession()?.token))
   const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
+    const unsubscribe = subscribeSession((session) => {
+      setHasSession(Boolean(session?.token))
+    })
+    return unsubscribe
   }, [])
 
   return (
@@ -53,8 +59,12 @@ export function Header() {
             >
               API Reference
             </Link>
-            <Button variant="primary" size="sm" onClick={() => router.push('/console?login=1')}>
-              Get started
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => router.push(hasSession ? '/console' : '/console?login=1')}
+            >
+              {hasSession ? 'Console' : 'Get started'}
             </Button>
             {mounted && (
               <button

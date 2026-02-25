@@ -368,6 +368,10 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
     if (params.get('login')) {
       setActiveTab('login')
     }
+    if (view === 'dashboard') {
+      const expandedTokenId = params.get('expand_token_id')
+      setExpandedTokenId(expandedTokenId && expandedTokenId.trim() ? expandedTokenId.trim() : null)
+    }
     const routeTokenId = params.get('token_id')
     if (view === 'route' && routeTokenId && routeTokenId.trim()) {
       setRequestedRouteTokenId(routeTokenId.trim())
@@ -1103,8 +1107,9 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
         return
       }
 
+      const createdEligibleModels = data.config?.eligible_models || eligibleModels
       setNewTokenSecret(data.token)
-      setNewTokenModels(data.config?.eligible_models || eligibleModels)
+      setNewTokenModels(createdEligibleModels)
       setSelectedRouteTokenId(data.id)
       setTokens((prev) => [
         ...prev,
@@ -1113,11 +1118,13 @@ export function UserAccessConsole({ view = 'dashboard' }: { view?: ConsoleView }
           name: data.name,
           is_primary: false,
           created_at: new Date().toISOString(),
+          eligible_models: createdEligibleModels,
         },
       ])
       setTokenName('')
       setEligibleModels([])
       setCreateStatus('success')
+      router.push(`/console?expand_token_id=${encodeURIComponent(data.id)}`)
     } catch {
       setCreateMessage('Unable to create token. Check the model list and try again.')
       setCreateStatus('error')
